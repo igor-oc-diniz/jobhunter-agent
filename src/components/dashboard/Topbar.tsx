@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bell } from 'lucide-react'
 import { AgentStatusBadge } from './AgentStatusBadge'
+import { NotificationCenter } from './NotificationCenter'
 import { onAuthChange } from '@/lib/firebase/auth'
 import type { User } from 'firebase/auth'
 
@@ -19,12 +19,8 @@ export function Topbar() {
       <AgentStatusBadge />
 
       <div className="flex items-center gap-3">
-        {/* Notifications */}
-        <button className="p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-primary-container rounded-full transition-all">
-          <Bell className="w-4 h-4" />
-        </button>
+        <NotificationCenter />
 
-        {/* User info */}
         {user && (
           <div className="flex items-center gap-2">
             {user.photoURL ? (
