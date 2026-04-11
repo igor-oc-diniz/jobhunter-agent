@@ -18,9 +18,20 @@ import path from "path";
 import { runWorker } from "./worker";
 import type { FeatureRequest, WorkerTask, WorkerResult } from "./types";
 
+// Load .env.local automatically so ANTHROPIC_API_KEY is available
+const PROJECT_ROOT = path.resolve(__dirname, "..");
+const envLocalPath = path.join(PROJECT_ROOT, ".env.local");
+if (fs.existsSync(envLocalPath)) {
+  for (const line of fs.readFileSync(envLocalPath, "utf-8").split("\n")) {
+    const match = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (match && !process.env[match[1]]) {
+      process.env[match[1]] = match[2].replace(/^["']|["']$/g, "").trim();
+    }
+  }
+}
+
 const client = new Anthropic();
 const MODEL = "claude-sonnet-4-5";
-const PROJECT_ROOT = path.resolve(__dirname, "..");
 
 // ── CLI parsing ───────────────────────────────────────────────────────────────
 
@@ -150,7 +161,7 @@ Rules:
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 2048,
+    max_tokens: 8096,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
   });

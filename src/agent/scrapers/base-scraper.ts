@@ -1,62 +1,165 @@
-import { v4 as uuidv4 } from 'uuid'
-import { FieldValue } from 'firebase-admin/firestore'
+import type { Logger } from 'winston'
+import type {
+  ScraperConfig,
+  ScraperResult,
+  RawJobInput,
+  NormalizedJob,
+  BlacklistCheckResult,
+} from '@/types/scraper'
+import { generateJobHash, checkBlacklist } from '../utils/deduplication'
 import { adminDb } from '../firebase-admin'
-import { extractTechStack } from '../utils/html-cleaner'
-import { humanDelay } from '../utils/human-delay'
-import { logger } from '../utils/logger'
-import type { RawJob } from '@/types'
-
-export interface SearchQuery {
-  keywords: string[]
-  location?: string
-  remote?: boolean
-  maxPages?: number
-}
 
 export abstract class BaseScraper {
-  abstract platform: string
+  protected config: ScraperConfig
+  protected logger: Logger
 
-  abstract scrape(userId: string, query: SearchQuery): Promise<RawJob[]>
-
-  protected extractTechStack(text: string): string[] {
-    return extractTechStack(text)
+  constructor(config: ScraperConfig, logger: Logger) {
+    this.config = config
+    this.logger = logger
   }
 
-  protected async humanDelay(): Promise<void> {
-    await humanDelay()
-  }
+  /**
+   * Abstract method to be implemented by each platform scraper
+   * Should return array of raw job data scraped from the platform
+   */
+  abstract scrape(): Promise<RawJobInput[]>
 
-  protected async isBlacklisted(userId: string, url: string): Promise<boolean> {
-    const blacklistRef = adminDb.collection(`users/${userId}/blacklist`)
-    const snap = await blacklistRef.where('sourceUrl', '==', url).limit(1).get()
-    if (!snap.empty) return true
+  /**
+   * Normalize raw job input and generate hash for deduplication
+   */
+  protected normalize(raw: RawJobInput): NormalizedJob {
+    const hash = generateJobHash(raw.externalId, raw.platform)
 
-    const appliedRef = adminDb.collection(`users/${userId}/applications`)
-    const appliedSnap = await appliedRef
-      .where('jobSnapshot.sourceUrl', '==', url)
-      .limit(1)
-      .get()
-    return !appliedSnap.empty
-  }
-
-  protected async saveRawJob(userId: string, job: Omit<RawJob, 'id' | 'userId' | 'scrapedAt'>): Promise<RawJob | null> {
-    const alreadySeen = await this.isBlacklisted(userId, job.sourceUrl)
-    if (alreadySeen) return null
-
-    const rawJob: RawJob = {
-      ...job,
-      id: uuidv4(),
-      userId,
-      scrapedAt: FieldValue.serverTimestamp() as any,
-      status: 'pending',
+    return {
+      ...raw,
+      scrapedAt: raw.scrapedAt.toISOString(),
+      normalized: true,
+      hash,
     }
+  }
 
-    await adminDb
-      .collection(`users/${userId}/rawJobs`)
-      .doc(rawJob.id)
-      .set(rawJob)
+  /**
+   * Check if a job hash exists in the blacklist
+   */
+  protected async checkBlacklist(hash: string): Promise<BlacklistCheckResult> {
+    return checkBlacklist(adminDb, hash)
+  }
 
-    logger.info('raw_job_saved', { userId, jobId: rawJob.id, platform: this.platform, title: rawJob.title })
-    return rawJob
+  /**
+   * Main orchestration method that runs the full scraping pipeline:
+   * 1. Scrape jobs from platform
+   * 2. Normalize each job
+   * 3. Check for duplicates against blacklist
+   * 4. Return statistics
+   */
+  public async run(): Promise<ScraperResult> {
+    const startTime = Date.now()
+    const errors: string[] = []
+    let jobsScraped = 0
+    let jobsDeduped = 0
+
+    try {
+      this.logger.info('Starting scraper run', {
+        platform: this.config.platform,
+        maxJobs: this.config.maxJobsPerRun,
+      })
+
+      // Step 1: Scrape raw jobs
+      let rawJobs: RawJobInput[] = []
+      try {
+        rawJobs = await this.scrape()
+        jobsScraped = rawJobs.length
+        
+        this.logger.info('Scraping completed', {
+          platform: this.config.platform,
+          jobsScraped,
+        })
+      } catch (scrapeError) {
+        const errorMsg = `Scraping failed: ${(scrapeError as Error).message}`
+        this.logger.error(errorMsg, {
+          platform: this.config.platform,
+          error: scrapeError,
+        })
+        errors.push(errorMsg)
+        
+        // Return early if scraping failed
+        return {
+          platform: this.config.platform,
+          jobsScraped: 0,
+          jobsDeduped: 0,
+          errors,
+          duration: Date.now() - startTime,
+          timestamp: new Date().toISOString(),
+        }
+      }
+
+      // Step 2: Normalize and deduplicate
+      const normalizedJobs: NormalizedJob[] = []
+      
+      for (const rawJob of rawJobs) {
+        try {
+          const normalized = this.normalize(rawJob)
+          
+          // Step 3: Check blacklist
+          const blacklistResult = await this.checkBlacklist(normalized.hash)
+          
+          if (blacklistResult.isDuplicate) {
+            jobsDeduped++
+            this.logger.debug('Job is duplicate, skipping', {
+              platform: this.config.platform,
+              hash: normalized.hash,
+              title: normalized.title,
+            })
+            continue
+          }
+
+          normalizedJobs.push(normalized)
+        } catch (normalizeError) {
+          const errorMsg = `Failed to normalize job: ${(normalizeError as Error).message}`
+          this.logger.warn(errorMsg, {
+            platform: this.config.platform,
+            jobTitle: rawJob.title,
+            error: normalizeError,
+          })
+          errors.push(errorMsg)
+        }
+      }
+
+      this.logger.info('Scraper run completed', {
+        platform: this.config.platform,
+        jobsScraped,
+        jobsDeduped,
+        newJobs: normalizedJobs.length,
+        errors: errors.length,
+      })
+
+      // Note: Actual storage of normalized jobs will be handled by the orchestrator
+      // This scraper is responsible only for scraping, normalizing, and deduping
+      
+      return {
+        platform: this.config.platform,
+        jobsScraped,
+        jobsDeduped,
+        errors,
+        duration: Date.now() - startTime,
+        timestamp: new Date().toISOString(),
+      }
+    } catch (error) {
+      const errorMsg = `Scraper run failed: ${(error as Error).message}`
+      this.logger.error(errorMsg, {
+        platform: this.config.platform,
+        error,
+      })
+      errors.push(errorMsg)
+
+      return {
+        platform: this.config.platform,
+        jobsScraped,
+        jobsDeduped,
+        errors,
+        duration: Date.now() - startTime,
+        timestamp: new Date().toISOString(),
+      }
+    }
   }
 }

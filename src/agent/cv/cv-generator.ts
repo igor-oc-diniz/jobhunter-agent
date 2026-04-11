@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer'
 import { z } from 'zod'
 import { FieldValue } from 'firebase-admin/firestore'
 import { adminDb, adminStorage } from '../firebase-admin'
-import { logger } from '../utils/logger'
+import logger from '../utils/logger'
 import type { RawJob, UserProfile, MatchDetails } from '@/types'
 
 const client = new Anthropic()

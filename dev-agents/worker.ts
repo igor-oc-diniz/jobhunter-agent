@@ -10,11 +10,11 @@ import Anthropic from '@anthropic-ai/sdk'
 import { TOOLS, executeTool } from './tools'
 import type { WorkerTask, WorkerResult } from './types'
 
-const client = new Anthropic()
 const MODEL = 'claude-sonnet-4-5'
 const MAX_ITERATIONS = 50
 
 export async function runWorker(task: WorkerTask): Promise<WorkerResult> {
+  const client = new Anthropic()
   console.log(`\n🤖 [${task.domain.toUpperCase()} WORKER] Starting...`)
 
   // The system prompt loads the skill context + project conventions
