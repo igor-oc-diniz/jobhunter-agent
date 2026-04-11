@@ -8,6 +8,7 @@ import { generateCoverLetter } from '../cover-letter/cover-letter-generator'
 import { fillAndSubmitForm } from '../form-filler/form-filler'
 import { createRunLogger } from '../utils/logger'
 import { v4 as uuidv4 } from 'uuid'
+import { ORCHESTRATOR } from '@/lib/constants/agent'
 import type { UserProfile, RawJob, MatchDetails } from '@/types'
 
 const client = new Anthropic()
@@ -166,7 +167,7 @@ Use the available tools. Make intelligent decisions:
   ]
 
   let iterations = 0
-  const maxIterations = 50
+  const maxIterations = ORCHESTRATOR.MAX_ITERATIONS
 
   while (iterations < maxIterations) {
     iterations++
@@ -200,8 +201,9 @@ Use the available tools. Make intelligent decisions:
       try {
         result = await dispatchTool(block.name, input, userId, profile, log)
       } catch (err) {
-        result = { error: String(err) }
-        log.error('tool_error', { tool: block.name, error: String(err) })
+        const message = err instanceof Error ? err.message : String(err)
+        result = { error: message }
+        log.error('tool_error', { tool: block.name, error: message })
       }
 
       toolResults.push({
@@ -222,7 +224,7 @@ Use the available tools. Make intelligent decisions:
     userId,
     completedAt: FieldValue.serverTimestamp(),
     status: 'completed',
-    entries: log.getEntries().slice(-100), // cap at 100 entries
+    entries: log.getEntries().slice(-ORCHESTRATOR.MAX_LOG_ENTRIES),
   })
 
   log.info('cycle_finished', { iterations })

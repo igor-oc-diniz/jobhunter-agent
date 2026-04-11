@@ -40,8 +40,8 @@ export function AnalyticsDashboard() {
   const filtered = useMemo(() => {
     const cutoff = subDays(new Date(), periodDays)
     return applications.filter((a) => {
-      const date = a.appliedAt ? new Date(a.appliedAt as string) : null
-      return date ? isAfter(date, cutoff) : true
+      if (!a.appliedAt) return true
+      return isAfter(new Date(a.appliedAt as string | number), cutoff)
     })
   }, [applications, periodDays])
 
@@ -61,8 +61,8 @@ export function AnalyticsDashboard() {
   const byWeek = useMemo(() => {
     const map = new Map<string, number>()
     filtered.forEach((a) => {
-      const date = a.appliedAt ? new Date(a.appliedAt as string) : null
-      if (!date) return
+      if (!a.appliedAt) return
+      const date = new Date(a.appliedAt as string | number)
       const week = format(startOfWeek(date), 'MMM d')
       map.set(week, (map.get(week) ?? 0) + 1)
     })
@@ -111,9 +111,7 @@ export function AnalyticsDashboard() {
         a.status,
         a.matchScore,
         a.jobSnapshot.sourcePlatform,
-        a.appliedAt ? new Date(a.appliedAt as string) : null
-          ? format((a.appliedAt as any).toDate(), 'yyyy-MM-dd')
-          : '',
+        a.appliedAt ? format(new Date(a.appliedAt as string | number), 'yyyy-MM-dd') : '',
         a.jobSnapshot.salaryMax ?? '',
       ]),
     ]

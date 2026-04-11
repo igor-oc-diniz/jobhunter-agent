@@ -12,6 +12,7 @@ import { KanbanColumn } from './KanbanColumn'
 import { ApplicationDetail } from './ApplicationDetail'
 import { ApplicationCard } from './ApplicationCard'
 import { getApplicationsAction, updateApplicationStatusAction } from '@/app/actions/applications'
+import { POLLING } from '@/lib/constants/agent'
 import type { Application, ApplicationStatus } from '@/types'
 
 const COLUMNS: { id: ApplicationStatus; title: string }[] = [
@@ -28,7 +29,7 @@ interface KanbanBoardProps {
   userId: string
 }
 
-export function KanbanBoard({ userId: _userId }: KanbanBoardProps) {
+export function KanbanBoard({ userId }: KanbanBoardProps) {
   const [applications, setApplications] = useState<Application[]>([])
   const [selectedApp, setSelectedApp] = useState<Application | null>(null)
   const [activeApp, setActiveApp] = useState<Application | null>(null)
@@ -44,8 +45,7 @@ export function KanbanBoard({ userId: _userId }: KanbanBoardProps) {
 
   useEffect(() => {
     fetchApplications()
-    // Poll every 30s for near real-time updates
-    const interval = setInterval(fetchApplications, 30_000)
+    const interval = setInterval(fetchApplications, POLLING.KANBAN_MS)
     return () => clearInterval(interval)
   }, [fetchApplications])
 
@@ -113,7 +113,7 @@ export function KanbanBoard({ userId: _userId }: KanbanBoardProps) {
 
       <ApplicationDetail
         application={selectedApp}
-        userId={_userId}
+        userId={userId}
         onClose={() => setSelectedApp(null)}
       />
     </>
