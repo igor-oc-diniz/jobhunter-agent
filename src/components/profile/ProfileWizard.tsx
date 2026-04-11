@@ -2,8 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/useAuth'
-import { saveProfile } from '@/lib/firestore/profile'
+import { saveProfileAction } from '@/app/actions/profile'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { StepPersonal } from './steps/StepPersonal'
@@ -26,7 +25,6 @@ const STEPS = [
 type PartialProfile = Partial<Omit<UserProfile, 'userId' | 'createdAt' | 'updatedAt'>>
 
 export function ProfileWizard() {
-  const { user } = useAuth()
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [data, setData] = useState<PartialProfile>({})
@@ -37,12 +35,11 @@ export function ProfileWizard() {
   }
 
   async function handleFinish(stepData: Partial<PartialProfile>) {
-    if (!user) return
     const final = { ...data, ...stepData } as Omit<UserProfile, 'userId' | 'createdAt' | 'updatedAt'>
 
     setSaving(true)
     try {
-      await saveProfile(user.uid, final)
+      await saveProfileAction(final)
       router.push('/applications')
     } catch (err) {
       console.error('Failed to save profile', err)

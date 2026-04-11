@@ -1,35 +1,17 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { signInWithGoogle } from '@/lib/firebase/auth'
-import { Button } from '@/components/ui/button'
+import { useSearchParams } from 'next/navigation'
+
+const errorMessages: Record<string, string> = {
+  cancelled: 'Sign-in was cancelled.',
+  token_exchange: 'Failed to complete sign in. Please try again.',
+  auth_failed: 'Authentication failed. Please try again.',
+  no_email: 'Could not retrieve email from Google. Please try again.',
+}
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSignIn() {
-    setLoading(true)
-    setError(null)
-    try {
-      const user = await signInWithGoogle()
-      const token = await user.getIdToken()
-
-      await fetch('/api/auth/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      })
-
-      router.push('/applications')
-    } catch {
-      setError('Failed to sign in. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const params = useSearchParams()
+  const error = params.get('error')
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
@@ -42,16 +24,17 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <p className="text-sm text-destructive text-center">{error}</p>
+          <p className="text-sm text-destructive text-center">
+            {errorMessages[error] ?? 'An error occurred. Please try again.'}
+          </p>
         )}
 
-        <Button
-          className="w-full"
-          onClick={handleSignIn}
-          disabled={loading}
+        <a
+          href="/api/auth/google"
+          className="flex w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
         >
-          {loading ? 'Signing in...' : 'Continue with Google'}
-        </Button>
+          Continue with Google
+        </a>
       </div>
     </div>
   )

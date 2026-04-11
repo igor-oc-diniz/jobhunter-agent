@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -11,7 +11,7 @@ import {
 import { KanbanColumn } from './KanbanColumn'
 import { ApplicationDetail } from './ApplicationDetail'
 import { ApplicationCard } from './ApplicationCard'
-import { subscribeApplications, updateApplicationStatus } from '@/lib/firestore/applications'
+import { getApplicationsAction, updateApplicationStatusAction } from '@/app/actions/applications'
 import type { Application, ApplicationStatus } from '@/types'
 
 const COLUMNS: { id: ApplicationStatus; title: string }[] = [
@@ -28,15 +28,26 @@ interface KanbanBoardProps {
   userId: string
 }
 
-export function KanbanBoard({ userId }: KanbanBoardProps) {
+export function KanbanBoard({ userId: _userId }: KanbanBoardProps) {
   const [applications, setApplications] = useState<Application[]>([])
   const [selectedApp, setSelectedApp] = useState<Application | null>(null)
   const [activeApp, setActiveApp] = useState<Application | null>(null)
 
+  const fetchApplications = useCallback(async () => {
+    try {
+      const apps = await getApplicationsAction()
+      setApplications(apps)
+    } catch (err) {
+      console.error('Failed to fetch applications:', err)
+    }
+  }, [])
+
   useEffect(() => {
-    const unsub = subscribeApplications(userId, setApplications)
-    return unsub
-  }, [userId])
+    fetchApplications()
+    // Poll every 30s for near real-time updates
+    const interval = setInterval(fetchApplications, 30_000)
+    return () => clearInterval(interval)
+  }, [fetchApplications])
 
   function getColumnApps(status: ApplicationStatus) {
     const base = applications.filter((a) => a.status === status)
@@ -61,18 +72,17 @@ export function KanbanBoard({ userId }: KanbanBoardProps) {
     const app = applications.find((a) => a.jobId === active.id)
     if (!app || app.status === targetStatus) return
 
-    await updateApplicationStatus(userId, app.jobId, targetStatus, targetStatus)
-  }
-
-  if (applications.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 text-center">
-        <p className="text-muted-foreground text-sm">No applications yet.</p>
-        <p className="text-muted-foreground text-xs mt-1">
-          Set up your profile and start the agent to see applications here.
-        </p>
-      </div>
+    // Optimistic update
+    setApplications((prev) =>
+      prev.map((a) => (a.jobId === active.id ? { ...a, status: targetStatus } : a))
     )
+
+    try {
+      await updateApplicationStatusAction(app.jobId, targetStatus)
+    } catch {
+      // Revert on failure
+      fetchApplications()
+    }
   }
 
   return (
@@ -103,7 +113,7 @@ export function KanbanBoard({ userId }: KanbanBoardProps) {
 
       <ApplicationDetail
         application={selectedApp}
-        userId={userId}
+        userId={_userId}
         onClose={() => setSelectedApp(null)}
       />
     </>
