@@ -18,7 +18,7 @@ import {
 import { format, subDays, startOfWeek, isAfter } from 'date-fns'
 import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getApplications } from '@/lib/firestore/applications'
+import { getApplicationsAction } from '@/app/actions/applications'
 import type { Application } from '@/types'
 
 const PIE_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2']
@@ -29,23 +29,19 @@ const PERIOD_OPTIONS = [
   { label: '90 days', days: 90 },
 ]
 
-interface AnalyticsDashboardProps {
-  userId: string
-}
-
-export function AnalyticsDashboard({ userId }: AnalyticsDashboardProps) {
+export function AnalyticsDashboard() {
   const [applications, setApplications] = useState<Application[]>([])
   const [periodDays, setPeriodDays] = useState(30)
 
   useEffect(() => {
-    getApplications(userId).then(setApplications)
-  }, [userId])
+    getApplicationsAction().then(setApplications).catch(console.error)
+  }, [])
 
   const filtered = useMemo(() => {
     const cutoff = subDays(new Date(), periodDays)
     return applications.filter((a) => {
-      const date = (a.appliedAt as any)?.toDate?.()
-      return date ? isAfter(date, cutoff) : true
+      if (!a.appliedAt) return true
+      return isAfter(new Date(a.appliedAt as string | number), cutoff)
     })
   }, [applications, periodDays])
 
@@ -65,8 +61,8 @@ export function AnalyticsDashboard({ userId }: AnalyticsDashboardProps) {
   const byWeek = useMemo(() => {
     const map = new Map<string, number>()
     filtered.forEach((a) => {
-      const date = (a.appliedAt as any)?.toDate?.()
-      if (!date) return
+      if (!a.appliedAt) return
+      const date = new Date(a.appliedAt as string | number)
       const week = format(startOfWeek(date), 'MMM d')
       map.set(week, (map.get(week) ?? 0) + 1)
     })
@@ -115,9 +111,7 @@ export function AnalyticsDashboard({ userId }: AnalyticsDashboardProps) {
         a.status,
         a.matchScore,
         a.jobSnapshot.sourcePlatform,
-        (a.appliedAt as any)?.toDate?.()
-          ? format((a.appliedAt as any).toDate(), 'yyyy-MM-dd')
-          : '',
+        a.appliedAt ? format(new Date(a.appliedAt as string | number), 'yyyy-MM-dd') : '',
         a.jobSnapshot.salaryMax ?? '',
       ]),
     ]

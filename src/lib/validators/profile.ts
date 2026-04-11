@@ -26,7 +26,7 @@ export const objectiveSchema = z
     salaryMin: z.number().min(0),
     salaryMax: z.number().min(0),
     availabilityDays: z.number().min(0),
-    professionalSummary: z.string().min(10, 'Summary is required'),
+    professionalSummary: z.string().min(10, 'Summary must be at least 10 characters'),
   })
   .refine((v) => v.salaryMax >= v.salaryMin, {
     message: 'Max salary must be greater than or equal to min salary',

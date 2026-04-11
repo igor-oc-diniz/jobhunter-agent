@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { FieldValue } from 'firebase-admin/firestore'
 import { adminDb } from '../firebase-admin'
 import { logger } from '../utils/logger'
+import { MATCHING } from '@/lib/constants/agent'
 import type { RawJob, UserProfile, MatchDetails } from '@/types'
 
 const client = new Anthropic()
@@ -112,7 +113,7 @@ function preFilter(job: RawJob, profile: UserProfile): boolean {
     ? jobStack.filter((t) => userStack.includes(t)).length / jobStack.length
     : 0.5
 
-  return overlap >= 0.1 // at least 10% stack overlap for pre-filter
+  return overlap >= MATCHING.MIN_STACK_OVERLAP // at least 10% stack overlap for pre-filter
 }
 
 export async function matchJob(
