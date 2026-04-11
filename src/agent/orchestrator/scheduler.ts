@@ -1,7 +1,7 @@
 import cron from 'node-cron'
 import { adminDb } from '../firebase-admin'
 import { runAgentCycle } from './orchestrator'
-import { logger } from '../utils/logger'
+import logger from '../utils/logger'
 import type { UserProfile } from '@/types'
 
 // Track running cycles to prevent overlap

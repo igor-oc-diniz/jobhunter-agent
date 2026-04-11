@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { FieldValue } from 'firebase-admin/firestore'
 import { adminDb } from '../firebase-admin'
-import { logger } from '../utils/logger'
+import logger from '../utils/logger'
 import { MATCHING } from '@/lib/constants/agent'
 import type { RawJob, UserProfile, MatchDetails } from '@/types'
 
