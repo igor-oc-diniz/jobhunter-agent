@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signInWithCustomToken, browserSessionPersistence, setPersistence } from 'firebase/auth'
 import { getAuth } from '@/lib/firebase/client'
+import { StatusBeacon } from '@/components/design-system'
 
-export default function FinalizePage() {
+function FinalizeContent() {
   const router = useRouter()
   const params = useSearchParams()
   const ran = useRef(false)
@@ -25,7 +26,6 @@ export default function FinalizePage() {
 
       try {
         const auth = getAuth()
-        // Use sessionStorage instead of IndexedDB to avoid extension interference
         await setPersistence(auth, browserSessionPersistence)
         const result = await signInWithCustomToken(auth, token)
         const idToken = await result.user.getIdToken()
@@ -47,8 +47,19 @@ export default function FinalizePage() {
   }, [params, router])
 
   return (
+    <div className="flex items-center gap-3">
+      <StatusBeacon variant="success" pulse />
+      <p className="text-on-surface-variant text-sm font-label">Completing sign in...</p>
+    </div>
+  )
+}
+
+export default function FinalizePage() {
+  return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <p className="text-muted-foreground text-sm">Completing sign in...</p>
+      <Suspense>
+        <FinalizeContent />
+      </Suspense>
     </div>
   )
 }

@@ -17,11 +17,19 @@ import {
 } from 'recharts'
 import { format, subDays, startOfWeek, isAfter } from 'date-fns'
 import { Download } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { StatCard } from '@/components/design-system'
 import { getApplicationsAction } from '@/app/actions/applications'
 import type { Application } from '@/types'
 
-const PIE_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2']
+const PIE_COLORS = ['#00ff88', '#00e0ff', '#d0bcff', '#60ff99', '#ffb4ab', '#00daf8']
+
+const CHART_TOOLTIP_STYLE = {
+  backgroundColor: '#201f1f',
+  border: '1px solid rgba(59,75,61,0.15)',
+  borderRadius: '1rem',
+  color: '#e5e2e1',
+  fontSize: 12,
+}
 
 const PERIOD_OPTIONS = [
   { label: '7 days', days: 7 },
@@ -45,7 +53,6 @@ export function AnalyticsDashboard() {
     })
   }, [applications, periodDays])
 
-  // Summary cards
   const total = filtered.length
   const active = filtered.filter((a) =>
     ['screening', 'interview_hr', 'interview_tech', 'offer'].includes(a.status)
@@ -57,7 +64,6 @@ export function AnalyticsDashboard() {
     ? Math.round(filtered.reduce((s, a) => s + a.matchScore, 0) / total)
     : 0
 
-  // Applications per week
   const byWeek = useMemo(() => {
     const map = new Map<string, number>()
     filtered.forEach((a) => {
@@ -71,7 +77,6 @@ export function AnalyticsDashboard() {
       .slice(-8)
   }, [filtered])
 
-  // Funnel
   const funnelStages = [
     { name: 'Applied', count: filtered.filter((a) => a.status !== 'queued').length },
     { name: 'Screening', count: filtered.filter((a) => ['screening', 'interview_hr', 'interview_tech', 'offer', 'hired'].includes(a.status)).length },
@@ -80,7 +85,6 @@ export function AnalyticsDashboard() {
     { name: 'Hired', count: filtered.filter((a) => a.status === 'hired').length },
   ]
 
-  // By platform
   const byPlatform = useMemo(() => {
     const map = new Map<string, number>()
     filtered.forEach((a) => {
@@ -90,7 +94,6 @@ export function AnalyticsDashboard() {
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }))
   }, [filtered])
 
-  // Top tech stack
   const techFreq = useMemo(() => {
     const map = new Map<string, number>()
     filtered.forEach((a) =>
@@ -118,90 +121,96 @@ export function AnalyticsDashboard() {
     const csv = rows.map((r) => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `applications-${format(new Date(), 'yyyy-MM-dd')}.csv`
-    a.click()
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `applications-${format(new Date(), 'yyyy-MM-dd')}.csv`
+    anchor.click()
     URL.revokeObjectURL(url)
   }
 
   return (
-    <div className="space-y-6">
-      {/* Period filter */}
-      <div className="flex items-center gap-2">
-        {PERIOD_OPTIONS.map((o) => (
-          <button
-            key={o.days}
-            onClick={() => setPeriodDays(o.days)}
-            className={`px-3 py-1 rounded text-sm border transition-colors ${
-              periodDays === o.days
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'border-border text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {o.label}
-          </button>
-        ))}
-        <Button variant="outline" size="sm" className="ml-auto" onClick={exportCsv}>
-          <Download className="w-4 h-4 mr-2" /> Export CSV
-        </Button>
+    <div className="space-y-8">
+      {/* Header row */}
+      <div className="flex items-center gap-3">
+        {/* Period filter */}
+        <div className="flex items-center gap-2 glass-panel p-1 rounded-[1rem]">
+          {PERIOD_OPTIONS.map((o) => (
+            <button
+              key={o.days}
+              onClick={() => setPeriodDays(o.days)}
+              className={
+                periodDays === o.days
+                  ? 'px-4 py-1.5 rounded-[0.75rem] text-xs font-bold font-label uppercase tracking-wider bg-primary-container text-on-primary transition-all'
+                  : 'px-4 py-1.5 rounded-[0.75rem] text-xs font-bold font-label uppercase tracking-wider text-on-surface-variant hover:text-on-surface transition-all'
+              }
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={exportCsv}
+          className="ml-auto flex items-center gap-2 px-4 py-2 rounded-[1rem] border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface text-xs font-bold font-label uppercase tracking-wider transition-all"
+        >
+          <Download className="w-3.5 h-3.5" /> Export CSV
+        </button>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total applications', value: total },
-          { label: 'Return rate', value: `${returnRate}%` },
-          { label: 'Active processes', value: active },
-          { label: 'Average score', value: `${avgScore}%` },
-        ].map((card) => (
-          <div key={card.label} className="border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground">{card.label}</p>
-            <p className="text-2xl font-bold mt-1">{card.value}</p>
-          </div>
-        ))}
+        <StatCard label="Total Applications" value={total} />
+        <StatCard label="Return Rate" value={`${returnRate}%`} />
+        <StatCard label="Active Processes" value={active} />
+        <StatCard label="Average Score" value={`${avgScore}%`} />
       </div>
 
       {total === 0 && (
-        <p className="text-center text-muted-foreground text-sm py-8">
-          No applications in the selected period.
+        <p className="text-center text-on-surface-variant text-sm py-12 font-label uppercase tracking-widest">
+          No applications in the selected period
         </p>
       )}
 
       {total > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Applications per week */}
-          <div className="border rounded-lg p-4">
-            <p className="text-sm font-medium mb-4">Applications per week</p>
+          <div className="bg-surface-container-low p-6 rounded-[1.5rem] border border-outline-variant/10">
+            <p className="text-xs font-label uppercase tracking-widest text-outline mb-4">
+              Applications per week
+            </p>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={byWeek}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Line type="monotone" dataKey="count" stroke="#2563eb" strokeWidth={2} dot={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(59,75,61,0.2)" />
+                <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#b9cbb9' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: '#b9cbb9' }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                <Line type="monotone" dataKey="count" stroke="#00ff88" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
 
           {/* Conversion funnel */}
-          <div className="border rounded-lg p-4">
-            <p className="text-sm font-medium mb-4">Conversion funnel</p>
+          <div className="bg-surface-container-low p-6 rounded-[1.5rem] border border-outline-variant/10">
+            <p className="text-xs font-label uppercase tracking-widest text-outline mb-4">
+              Conversion funnel
+            </p>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={funnelStages} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={70} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#2563eb" radius={[0, 4, 4, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(59,75,61,0.2)" />
+                <XAxis type="number" tick={{ fontSize: 10, fill: '#b9cbb9' }} axisLine={false} tickLine={false} />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fill: '#b9cbb9' }} width={70} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                <Bar dataKey="count" fill="#00ff88" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
           {/* By platform */}
           {byPlatform.length > 0 && (
-            <div className="border rounded-lg p-4">
-              <p className="text-sm font-medium mb-4">By platform</p>
+            <div className="bg-surface-container-low p-6 rounded-[1.5rem] border border-outline-variant/10">
+              <p className="text-xs font-label uppercase tracking-widest text-outline mb-4">
+                By platform
+              </p>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie
@@ -218,7 +227,7 @@ export function AnalyticsDashboard() {
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -226,15 +235,17 @@ export function AnalyticsDashboard() {
 
           {/* Top tech stack */}
           {techFreq.length > 0 && (
-            <div className="border rounded-lg p-4">
-              <p className="text-sm font-medium mb-4">Most demanded tech</p>
+            <div className="bg-surface-container-low p-6 rounded-[1.5rem] border border-outline-variant/10">
+              <p className="text-xs font-label uppercase tracking-widest text-outline mb-4">
+                Most demanded tech
+              </p>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={techFreq}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(59,75,61,0.2)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#b9cbb9' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#b9cbb9' }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                  <Bar dataKey="count" fill="#d0bcff" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
