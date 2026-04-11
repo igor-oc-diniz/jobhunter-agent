@@ -32,8 +32,12 @@ export function NotificationCenter() {
   const panelRef = useRef<HTMLDivElement>(null)
 
   const fetchNotifications = useCallback(async () => {
-    const data = await getNotificationsAction(true)
-    setNotifications(data)
+    try {
+      const data = await getNotificationsAction(true)
+      setNotifications(data)
+    } catch {
+      // Silently ignore — notification center is non-critical
+    }
   }, [])
 
   useEffect(() => {

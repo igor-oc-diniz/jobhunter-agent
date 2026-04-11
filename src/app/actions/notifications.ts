@@ -27,30 +27,37 @@ export interface SerializedNotification {
 
 export async function getNotificationsAction(onlyUnread = true): Promise<SerializedNotification[]> {
   const userId = await requireUserId()
+
+  // NOTE: Combining where('read') + orderBy('createdAt') requires a composite
+  // index. To avoid the index requirement we fetch without orderBy and sort
+  // in memory when filtering by read status.
   let query = adminDb
     .collection(`users/${userId}/notifications`)
-    .orderBy('createdAt', 'desc')
     .limit(20) as FirebaseFirestore.Query
 
   if (onlyUnread) {
     query = query.where('read', '==', false)
+  } else {
+    query = query.orderBy('createdAt', 'desc')
   }
 
   const snap = await query.get()
-  return snap.docs.map((d) => {
-    const raw = d.data()
-    return {
-      id: d.id,
-      userId,
-      type: raw.type as NotificationType,
-      title: raw.title ?? '',
-      message: raw.message ?? '',
-      read: raw.read ?? false,
-      actionUrl: raw.actionUrl,
-      relatedJobId: raw.relatedJobId,
-      createdAt: toIso(raw.createdAt),
-    }
-  })
+  return snap.docs
+    .map((d) => {
+      const raw = d.data()
+      return {
+        id: d.id,
+        userId,
+        type: raw.type as NotificationType,
+        title: raw.title ?? '',
+        message: raw.message ?? '',
+        read: raw.read ?? false,
+        actionUrl: raw.actionUrl,
+        relatedJobId: raw.relatedJobId,
+        createdAt: toIso(raw.createdAt),
+      }
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }
 
 export async function markNotificationReadAction(notifId: string): Promise<void> {
