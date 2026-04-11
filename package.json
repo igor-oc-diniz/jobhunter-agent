@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "agent:dev": "tsx watch src/agent/index.ts",
-    "agent:start": "tsx src/agent/index.ts",
+    "agent:dev": "tsx watch --env-file=.env.local src/agent/index.ts",
+    "agent:start": "tsx --env-file=.env.local src/agent/index.ts",
     "dev-agent": "tsx dev-agents/orchestrator.ts"
   },
   "dependencies": {
