@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "agent:dev": "tsx watch src/agent/index.ts",
-    "agent:start": "tsx src/agent/index.ts"
+    "agent:start": "tsx src/agent/index.ts",
+    "dev-agent": "tsx dev-agents/orchestrator.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.86.1",
