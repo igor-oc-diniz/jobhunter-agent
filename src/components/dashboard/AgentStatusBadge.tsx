@@ -1,28 +1,33 @@
 'use client'
 
+import { StatusBeacon } from '@/components/design-system'
 import { cn } from '@/lib/utils'
 
 type AgentStatus = 'idle' | 'running' | 'blocked' | 'error' | 'paused'
 
-const statusConfig: Record<AgentStatus, { label: string; color: string }> = {
-  idle: { label: 'Agent idle', color: 'bg-muted-foreground' },
-  running: { label: 'Agent running', color: 'bg-green-500' },
-  blocked: { label: 'Awaiting confirmation', color: 'bg-yellow-500' },
-  error: { label: 'Agent error', color: 'bg-destructive' },
-  paused: { label: 'Agent paused', color: 'bg-muted-foreground' },
+const statusConfig: Record<
+  AgentStatus,
+  { label: string; beacon: 'success' | 'pending' | 'error' | 'info' | 'muted'; pulse: boolean }
+> = {
+  idle: { label: 'Agent idle', beacon: 'muted', pulse: false },
+  running: { label: 'Agent running', beacon: 'success', pulse: true },
+  blocked: { label: 'Awaiting confirmation', beacon: 'pending', pulse: true },
+  error: { label: 'Agent error', beacon: 'error', pulse: false },
+  paused: { label: 'Agent paused', beacon: 'muted', pulse: false },
 }
 
 interface AgentStatusBadgeProps {
   status?: AgentStatus
+  className?: string
 }
 
-export function AgentStatusBadge({ status = 'idle' }: AgentStatusBadgeProps) {
+export function AgentStatusBadge({ status = 'idle', className }: AgentStatusBadgeProps) {
   const config = statusConfig[status]
 
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className={cn('w-2 h-2 rounded-full', config.color, status === 'running' && 'animate-pulse')} />
-      <span className="text-muted-foreground">{config.label}</span>
+    <div className={cn('flex items-center gap-2', className)}>
+      <StatusBeacon variant={config.beacon} pulse={config.pulse} />
+      <span className="text-sm font-label text-on-surface-variant">{config.label}</span>
     </div>
   )
 }
