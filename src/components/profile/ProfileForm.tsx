@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Progress } from '@/components/ui/progress'
+import { StepImport } from './steps/StepImport'
 import { StepPersonal } from './steps/StepPersonal'
 import { StepObjective } from './steps/StepObjective'
 import { StepExperiences } from './steps/StepExperiences'
@@ -20,13 +21,19 @@ interface ProfileFormProps {
   initialData?: PartialProfile
   title: string
   subtitle: string
+  showImportStep?: boolean
 }
 
-export function ProfileForm({ initialData = {}, title, subtitle }: ProfileFormProps) {
+export function ProfileForm({ initialData = {}, title, subtitle, showImportStep = false }: ProfileFormProps) {
   const router = useRouter()
+  // importing = true means we're on the import pre-step (before step 0)
+  const [importing, setImporting] = useState(showImportStep)
   const [step, setStep] = useState(0)
   const [data, setData] = useState<PartialProfile>(initialData)
   const [saving, setSaving] = useState(false)
+  // Incremented after import to force remount of step components so
+  // React Hook Form picks up the new defaultValues
+  const [importVersion, setImportVersion] = useState(0)
 
   function advance(stepData: Partial<PartialProfile>) {
     setData((prev) => ({ ...prev, ...stepData }))
@@ -46,40 +53,54 @@ export function ProfileForm({ initialData = {}, title, subtitle }: ProfileFormPr
     }
   }
 
+  function handleImported(imported: PartialProfile) {
+    setData((prev) => ({ ...prev, ...imported }))
+    setImportVersion((v) => v + 1)
+    setImporting(false)
+  }
+
   const progress = ((step + 1) / STEPS.length) * 100
+
+  if (importing) {
+    return (
+      <div className="max-w-4xl mx-auto py-4 px-4">
+        <StepImport onImported={handleImported} onSkip={() => setImporting(false)} />
+      </div>
+    )
+  }
 
   const stepComponents = [
     <StepPersonal
-      key="personal"
+      key={`personal-${importVersion}`}
       defaultValues={data.personal}
       onNext={(v) => advance({ personal: v })}
     />,
     <StepObjective
-      key="objective"
+      key={`objective-${importVersion}`}
       defaultValues={data.objective}
       onBack={() => setStep(1)}
       onNext={(v) => advance({ objective: v })}
     />,
     <StepExperiences
-      key="experiences"
+      key={`experiences-${importVersion}`}
       defaultValues={data.experiences}
       onBack={() => setStep(1)}
       onNext={(v) => advance({ experiences: v })}
     />,
     <StepEducation
-      key="education"
+      key={`education-${importVersion}`}
       defaultValues={data.education}
       onBack={() => setStep(2)}
       onNext={(v) => advance({ education: v })}
     />,
     <StepSkills
-      key="skills"
+      key={`skills-${importVersion}`}
       defaultValues={data.skills}
       onBack={() => setStep(3)}
       onNext={(v) => advance({ skills: v })}
     />,
     <StepAgentConfig
-      key="agentConfig"
+      key={`agentConfig-${importVersion}`}
       defaultValues={data.agentConfig}
       onBack={() => setStep(4)}
       onFinish={(v) => finish({ agentConfig: v })}
