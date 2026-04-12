@@ -55,15 +55,27 @@ export async function getAgentLogsAction(limit = 5): Promise<AgentRunLog[]> {
   })
 }
 
-export async function triggerAgentRunAction(): Promise<{ ok: boolean }> {
+export async function triggerAgentRunAction(): Promise<{ ok: boolean; error?: string }> {
   const userId = await requireUserId()
-  await adminDb.doc(`users/${userId}/agentStatus/current`).set(
-    {
-      status: 'running',
-      triggeredManually: true,
-      updatedAt: new Date().toISOString(),
+
+  const agentUrl = process.env.AGENT_URL
+  if (!agentUrl) {
+    return { ok: false, error: 'AGENT_URL not configured' }
+  }
+
+  const res = await fetch(`${agentUrl}/run`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(process.env.AGENT_SECRET ? { 'x-agent-secret': process.env.AGENT_SECRET } : {}),
     },
-    { merge: true }
-  )
+    body: JSON.stringify({ userId }),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    return { ok: false, error: `Agent returned ${res.status}: ${text}` }
+  }
+
   return { ok: true }
 }
