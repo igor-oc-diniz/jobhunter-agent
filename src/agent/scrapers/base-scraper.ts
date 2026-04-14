@@ -87,6 +87,7 @@ export abstract class BaseScraper {
           platform: this.config.platform,
           jobsScraped: 0,
           jobsDeduped: 0,
+          jobs: [],
           errors,
           duration: Date.now() - startTime,
           timestamp: new Date().toISOString(),
@@ -133,13 +134,11 @@ export abstract class BaseScraper {
         errors: errors.length,
       })
 
-      // Note: Actual storage of normalized jobs will be handled by the orchestrator
-      // This scraper is responsible only for scraping, normalizing, and deduping
-      
       return {
         platform: this.config.platform,
         jobsScraped,
         jobsDeduped,
+        jobs: normalizedJobs,
         errors,
         duration: Date.now() - startTime,
         timestamp: new Date().toISOString(),
@@ -156,6 +155,7 @@ export abstract class BaseScraper {
         platform: this.config.platform,
         jobsScraped,
         jobsDeduped,
+        jobs: [],
         errors,
         duration: Date.now() - startTime,
         timestamp: new Date().toISOString(),

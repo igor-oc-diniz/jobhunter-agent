@@ -12,6 +12,7 @@ export interface ScraperResult {
   platform: string
   jobsScraped: number
   jobsDeduped: number
+  jobs: NormalizedJob[]
   errors: string[]
   duration: number
   timestamp: string
