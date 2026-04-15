@@ -192,15 +192,23 @@ Even in automatic mode, the agent must pause and notify the user for:
 
 ---
 
-## Scraping Platforms (V1)
+## Scraping Platforms
+
+**Focus: international / remote-first jobs.**
 
 | Platform | Strategy | Anti-bot difficulty | Status |
 |----------|-----------|---------------------|--------|
-| Gupy | Playwright (SPA) | Low | stub only |
-| Indeed BR | Playwright + stealth (Cloudflare blocks HTTP) | High | ✅ implemented |
-| LinkedIn | Playwright | High | not started |
-| InfoJobs | Cheerio + HTTP | Low | not started |
-| Catho | Playwright | Medium | not started |
+| Remotive | Public REST API (axios) | None | ✅ implemented |
+| Indeed BR | Playwright + stealth | High | ✅ implemented |
+| We Work Remotely | Cheerio + HTTP | Very low | planned |
+| Wellfound (AngelList) | Playwright | Medium | planned |
+| Himalayas | Cheerio + HTTP | Low | planned |
+| LinkedIn | Playwright | High | out of scope (v1) |
+| Gupy | Playwright (SPA) | Low | deprioritized — poor application UX |
+
+**Default platforms** (env `SCRAPER_PLATFORMS`): `remotive,indeed-br`
+
+**Remotive implementation note**: Uses the public REST API (`remotive.com/api/remote-jobs`). Fetches three categories: `software-dev`, `devops-sysadmin`, `data`. No browser required — pure axios. Tags array from API is merged with skill pattern extraction from description.
 
 **Indeed BR implementation note**: Direct HTTP/Cheerio is blocked by Cloudflare (`cf-mitigated: challenge`). Scraper uses `playwright-extra` + `puppeteer-extra-plugin-stealth`. Job data is extracted from `window.mosaic.providerData["mosaic-provider-jobcards"]` embedded JSON in the page HTML — more reliable than CSS selectors which change frequently.
 
@@ -402,11 +410,14 @@ users/{userId}/
 | Semantic Matching (Module 03) | ✅ Done | `src/agent/matching/matcher.ts` — weighted score + Claude analysis + Zod validation |
 | Indeed BR scraper | ✅ Done | `src/agent/scrapers/indeed-br-scraper.ts` — Playwright + stealth, parses embedded JSON |
 | Agent real-time UX | ✅ Done | `AgentPanel.tsx` adaptive polling (3s/15s), live step label, run logs written to Firestore |
+| Remotive scraper | ✅ Done | `src/agent/scrapers/remotive-scraper.ts` — public REST API, categories: software-dev, devops, data |
 
 ### What is NOT implemented yet
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| Gupy scraper | High — next | `src/agent/scrapers/gupy-scraper.ts` — stub only |
+| We Work Remotely scraper | High — next | Cheerio + HTTP, no anti-bot |
+| Wellfound scraper | High | Playwright, startup/international jobs |
+| Himalayas scraper | Medium | Cheerio + HTTP, remote-focused |
 | Deploy agent container (Fly.io) | High | `src/agent/fly.toml` ready, needs env vars + deploy |
 | Firestore security rules | Medium | Module 07 — rules + composite indexes not deployed |
 | BullMQ / Redis queue | Medium | Upstash Redis vars empty |
