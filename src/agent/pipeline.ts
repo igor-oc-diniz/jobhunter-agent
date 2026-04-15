@@ -4,6 +4,7 @@ import { adminDb } from './firebase-admin'
 import { GupyScraper } from './scrapers/gupy-scraper'
 import { IndeedBRScraper } from './scrapers/indeed-br-scraper'
 import { RemotiveScraper } from './scrapers/remotive-scraper'
+import { WeWorkRemotelyScraper } from './scrapers/weworkremotely-scraper'
 import { runMatching } from './matching/matcher'
 import { createLogger } from './utils/logger'
 import { loadConfig } from './utils/config'
@@ -110,6 +111,7 @@ export async function runPipeline(userId: string): Promise<PipelineResult> {
       if (sc.platform === 'gupy') return new GupyScraper(sc, log)
       if (sc.platform === 'indeed-br') return new IndeedBRScraper(sc, log)
       if (sc.platform === 'remotive') return new RemotiveScraper(sc, log)
+      if (sc.platform === 'weworkremotely') return new WeWorkRemotelyScraper(sc, log)
       return null
     })
     .filter(Boolean) as (GupyScraper | IndeedBRScraper)[]
