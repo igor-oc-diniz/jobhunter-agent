@@ -7,6 +7,10 @@ import { RemotiveScraper } from './scrapers/remotive-scraper'
 import { WeWorkRemotelyScraper } from './scrapers/weworkremotely-scraper'
 import { HimalayadScraper } from './scrapers/himalayas-scraper'
 import { WellfoundScraper } from './scrapers/wellfound-scraper'
+import { RemoteOKScraper } from './scrapers/remoteok-scraper'
+import { ArbeitnowScraper } from './scrapers/arbeitnow-scraper'
+import { IndeedCAScraper } from './scrapers/indeed-ca-scraper'
+import { IndeedAUScraper } from './scrapers/indeed-au-scraper'
 import { runMatching } from './matching/matcher'
 import { createLogger } from './utils/logger'
 import { loadConfig } from './utils/config'
@@ -116,6 +120,10 @@ export async function runPipeline(userId: string): Promise<PipelineResult> {
       if (sc.platform === 'weworkremotely') return new WeWorkRemotelyScraper(sc, log)
       if (sc.platform === 'himalayas') return new HimalayadScraper(sc, log)
       if (sc.platform === 'wellfound') return new WellfoundScraper(sc, log)
+      if (sc.platform === 'remoteok') return new RemoteOKScraper(sc, log)
+      if (sc.platform === 'arbeitnow') return new ArbeitnowScraper(sc, log)
+      if (sc.platform === 'indeed-ca') return new IndeedCAScraper(sc, log)
+      if (sc.platform === 'indeed-au') return new IndeedAUScraper(sc, log)
       return null
     })
     .filter(Boolean) as (GupyScraper | IndeedBRScraper)[]
