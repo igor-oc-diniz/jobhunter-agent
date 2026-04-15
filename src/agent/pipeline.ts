@@ -59,18 +59,40 @@ export interface PipelineResult {
   errors: string[]
 }
 
+async function setStatus(userId: string, fields: Record<string, unknown>) {
+  await adminDb.doc(`users/${userId}/agentStatus/current`).set(
+    { ...fields, updatedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  )
+}
+
 export async function runPipeline(userId: string): Promise<PipelineResult> {
   logger.info('pipeline_start', { userId })
   const errors: string[] = []
+  const runId = uuidv4()
+  const logEntries: Array<{ level: string; action: string; message: string; timestamp: string }> = []
+
+  function addEntry(level: 'info' | 'warn' | 'error', action: string, message: string) {
+    logEntries.push({ level, action, message, timestamp: new Date().toISOString() })
+  }
 
   const profileSnap = await adminDb.doc(`users/${userId}/profile/data`).get()
   if (!profileSnap.exists) throw new Error(`Profile not found for userId: ${userId}`)
   const profile = profileSnap.data() as UserProfile
 
-  await adminDb.doc(`users/${userId}/agentStatus/current`).set(
-    { status: 'running', triggeredManually: true, updatedAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  )
+  // Create run log document
+  await adminDb.doc(`users/${userId}/agentLogs/${runId}`).set({
+    startedAt: FieldValue.serverTimestamp(),
+    status: 'running',
+    applicationsProcessed: 0,
+    applicationsSubmitted: 0,
+    errors: 0,
+    entries: [],
+  })
+
+  await setStatus(userId, { status: 'running', triggeredManually: true, currentJob: 'Iniciando pipeline...' })
+
+  addEntry('info', 'pipeline_start', 'Pipeline iniciado')
 
   const config = loadConfig()
   const scraperConfigs: ScraperConfig[] = config.scraperPlatforms.map((platform) => ({
@@ -90,6 +112,14 @@ export async function runPipeline(userId: string): Promise<PipelineResult> {
     })
     .filter(Boolean) as (GupyScraper | IndeedBRScraper)[]
 
+  // Update status: scraping
+  const platformNames = scraperConfigs.map((s) => s.platform).join(', ')
+  await setStatus(userId, { currentJob: `Scraping vagas em ${platformNames}...` })
+  addEntry('info', 'scraping_start', `Iniciando scraping em ${platformNames}`)
+
+  // Flush partial log so dashboard sees the step immediately
+  await adminDb.doc(`users/${userId}/agentLogs/${runId}`).update({ entries: logEntries })
+
   const results = await Promise.allSettled(scrapers.map((s) => s.run()))
 
   let scraped = 0
@@ -98,6 +128,7 @@ export async function runPipeline(userId: string): Promise<PipelineResult> {
   for (const result of results) {
     if (result.status === 'rejected') {
       errors.push(String(result.reason))
+      addEntry('error', 'scraper_failed', String(result.reason))
       continue
     }
     scraped += result.value.jobsScraped
@@ -113,6 +144,12 @@ export async function runPipeline(userId: string): Promise<PipelineResult> {
   }
 
   logger.info('scraping_done', { userId, scraped, saved })
+  addEntry('info', 'scraping_done', `${scraped} vagas coletadas, ${saved} salvas`)
+
+  // Update status: matching
+  await setStatus(userId, { currentJob: `Analisando compatibilidade de ${saved} vagas...` })
+  addEntry('info', 'matching_start', 'Iniciando análise semântica')
+  await adminDb.doc(`users/${userId}/agentLogs/${runId}`).update({ entries: logEntries })
 
   await runMatching(userId, profile)
 
@@ -121,10 +158,24 @@ export async function runPipeline(userId: string): Promise<PipelineResult> {
     adminDb.collection(`users/${userId}/rawJobs`).where('status', '==', 'rejected').get(),
   ])
 
-  await adminDb.doc(`users/${userId}/agentStatus/current`).set(
-    { status: 'idle', lastRunAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  )
+  addEntry('info', 'matching_done', `${matchedSnap.size} vagas aprovadas, ${rejectedSnap.size} rejeitadas`)
+  addEntry('info', 'pipeline_done', 'Pipeline concluído com sucesso')
+
+  // Finalize run log
+  await adminDb.doc(`users/${userId}/agentLogs/${runId}`).set({
+    finishedAt: FieldValue.serverTimestamp(),
+    status: errors.length > 0 ? 'failed' : 'completed',
+    applicationsProcessed: scraped,
+    applicationsSubmitted: matchedSnap.size,
+    errors: errors.length,
+    entries: logEntries,
+  }, { merge: true })
+
+  await setStatus(userId, {
+    status: 'idle',
+    lastRunAt: FieldValue.serverTimestamp(),
+    currentJob: null,
+  })
 
   const summary: PipelineResult = {
     scraped,

@@ -1,232 +1,141 @@
-import axios, { type AxiosInstance } from 'axios'
-import * as cheerio from 'cheerio'
+import { chromium } from 'playwright-extra'
+import StealthPlugin from 'puppeteer-extra-plugin-stealth'
 import { BaseScraper } from './base-scraper'
 import type { RawJobInput } from '@/types/scraper'
 
+chromium.use(StealthPlugin())
+
+const SKILL_PATTERNS = [
+  'javascript', 'typescript', 'python', 'java', 'c#', 'php', 'ruby', 'go', 'rust', 'kotlin', 'swift',
+  'react', 'angular', 'vue', 'next.js', 'node.js', 'express', 'nestjs', 'fastapi', 'django', 'spring',
+  'sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch',
+  'docker', 'kubernetes', 'aws', 'azure', 'gcp', 'terraform',
+  'git', 'ci/cd', 'graphql', 'rest', 'microservices',
+]
+
+function extractSkills(text: string): string[] {
+  const lower = text.toLowerCase()
+  return SKILL_PATTERNS.filter((s) => lower.includes(s))
+}
+
+interface IndeedJobCard {
+  jobkey?: string
+  displayTitle?: string
+  company?: string
+  formattedLocation?: string
+  snippet?: string
+  salary?: { text?: string }
+  jobTypes?: string[]
+  pubDate?: number
+}
+
 export class IndeedBRScraper extends BaseScraper {
-  private axiosInstance: AxiosInstance
-
-  constructor(...args: ConstructorParameters<typeof BaseScraper>) {
-    super(...args)
-
-    // Create axios instance with configuration
-    this.axiosInstance = axios.create({
-      timeout: this.config.timeout || 30000,
-      headers: {
-        'User-Agent': this.config.userAgent || 
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-      },
-    })
-  }
-
-  /**
-   * Scrape jobs from Indeed Brazil using static HTML parsing
-   */
   async scrape(): Promise<RawJobInput[]> {
+    const browser = await chromium.launch({ headless: true })
     const jobs: RawJobInput[] = []
 
     try {
-      // Indeed Brazil search URL for tech jobs
-      // In production, these parameters should be configurable
-      const searchParams = new URLSearchParams({
-        q: 'desenvolvedor',
-        l: 'Brasil',
-        sort: 'date',
-        fromage: '7', // Last 7 days
+      const context = await browser.newContext({
+        locale: 'pt-BR',
+        timezoneId: 'America/Sao_Paulo',
+        viewport: { width: 1280, height: 800 },
+        userAgent:
+          this.config.userAgent ??
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       })
 
-      const baseUrl = 'https://br.indeed.com/jobs'
-      const searchUrl = `${baseUrl}?${searchParams.toString()}`
+      const page = await context.newPage()
 
-      this.logger.info('Fetching Indeed Brazil jobs', { url: searchUrl })
+      // Block images/fonts to speed up loading
+      await page.route('**/*.{png,jpg,jpeg,gif,webp,woff,woff2,ttf}', (route) => route.abort())
 
-      let currentPage = 0
-      const maxPages = Math.ceil(this.config.maxJobsPerRun / 15) // Indeed shows ~15 jobs per page
+      const maxPages = Math.ceil(this.config.maxJobsPerRun / 15)
 
-      while (jobs.length < this.config.maxJobsPerRun && currentPage < maxPages) {
-        const pageUrl = currentPage === 0 
-          ? searchUrl 
-          : `${searchUrl}&start=${currentPage * 10}`
+      for (let pageNum = 0; pageNum < maxPages && jobs.length < this.config.maxJobsPerRun; pageNum++) {
+        const start = pageNum * 10
+        const url = `https://br.indeed.com/jobs?q=desenvolvedor&l=Brasil&sort=date&fromage=7${start > 0 ? `&start=${start}` : ''}`
+
+        this.logger.info('indeed_fetch_page', { page: pageNum + 1, url })
 
         try {
-          const response = await this.axiosInstance.get(pageUrl)
-          const pageJobs = await this.parseJobsFromHTML(response.data, baseUrl)
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.config.timeout ?? 30000 })
+
+          // Random human-like delay
+          await page.waitForTimeout(2000 + Math.random() * 3000)
+
+          // Extract embedded JSON from window.mosaic.providerData
+          const pageJobs = await page.evaluate(() => {
+            try {
+              // Indeed embeds job data as JSON in the page
+              const scripts = Array.from(document.querySelectorAll('script'))
+              for (const script of scripts) {
+                const content = script.textContent ?? ''
+                if (content.includes('mosaic-provider-jobcards')) {
+                  const match = content.match(
+                    /window\.mosaic\.providerData\["mosaic-provider-jobcards"\]\s*=\s*(\{.+?\});/s
+                  )
+                  if (match) {
+                    const data = JSON.parse(match[1])
+                    const results = data?.metaData?.mosaicProviderJobCardsModel?.results ?? []
+                    return results as IndeedJobCard[]
+                  }
+                }
+              }
+              return []
+            } catch {
+              return []
+            }
+          })
 
           if (pageJobs.length === 0) {
-            this.logger.info('No more jobs found on page', { page: currentPage })
+            this.logger.info('indeed_no_jobs_on_page', { page: pageNum + 1 })
             break
           }
 
-          jobs.push(...pageJobs)
-          this.logger.debug(`Collected ${jobs.length} jobs from ${currentPage + 1} pages`)
+          for (const card of pageJobs) {
+            if (!card.jobkey || !card.displayTitle) continue
 
-          currentPage++
+            const salary = card.salary?.text
+            const employmentType = card.jobTypes?.[0]
+            const postedDate = card.pubDate ? new Date(card.pubDate).toISOString() : undefined
+            const description = card.snippet ?? card.displayTitle
 
-          // Add delay between requests to be respectful
-          if (currentPage < maxPages && jobs.length < this.config.maxJobsPerRun) {
-            await this.delay(2000)
+            jobs.push({
+              externalId: card.jobkey,
+              platform: 'indeed-br',
+              title: card.displayTitle,
+              company: card.company ?? 'Unknown',
+              location: card.formattedLocation ?? 'Brasil',
+              url: `https://br.indeed.com/viewjob?jk=${card.jobkey}`,
+              description,
+              salary,
+              employmentType,
+              postedDate,
+              requiredSkills: extractSkills(description),
+              scrapedAt: new Date(),
+            })
           }
-        } catch (error) {
-          this.logger.error('Failed to fetch page', {
-            page: currentPage,
-            error: (error as Error).message,
-          })
+
+          this.logger.info('indeed_page_done', { page: pageNum + 1, collected: jobs.length })
+
+          // Respectful delay between pages: 10–20s
+          if (pageNum < maxPages - 1 && jobs.length < this.config.maxJobsPerRun) {
+            await page.waitForTimeout(10000 + Math.random() * 10000)
+          }
+        } catch (err) {
+          this.logger.error('indeed_page_error', { page: pageNum + 1, error: String(err) })
           break
         }
       }
 
-      this.logger.info('Indeed BR scraping completed', { totalJobs: jobs.length })
-
-      // Return only up to maxJobsPerRun
-      return jobs.slice(0, this.config.maxJobsPerRun)
-    } catch (error) {
-      this.logger.error('Indeed BR scraping failed', {
-        error: (error as Error).message,
-        stack: (error as Error).stack,
-      })
-      return []
-    }
-  }
-
-  /**
-   * Parse jobs from Indeed HTML response
-   */
-  private async parseJobsFromHTML(html: string, baseUrl: string): Promise<RawJobInput[]> {
-    const jobs: RawJobInput[] = []
-
-    try {
-      const $ = cheerio.load(html)
-
-      // Indeed uses various class names, we'll try multiple selectors
-      const jobCards = $('.job_seen_beacon, .jobsearch-SerpJobCard, div[data-jk]')
-
-      this.logger.debug(`Found ${jobCards.length} job cards in HTML`)
-
-      jobCards.each((index, element) => {
-        try {
-          const $card = $(element)
-
-          // Extract job ID
-          const jobId = $card.attr('data-jk') || 
-                       $card.find('[data-jk]').attr('data-jk') ||
-                       $card.attr('id')
-
-          if (!jobId) {
-            return // Skip if no ID found
-          }
-
-          // Extract title
-          const $title = $card.find('h2.jobTitle, .jobTitle span, a[data-jk]').first()
-          const title = $title.text().trim()
-
-          if (!title) {
-            return // Skip if no title
-          }
-
-          // Extract company
-          const $company = $card.find('.companyName, [data-testid="company-name"]').first()
-          const company = $company.text().trim() || 'Unknown'
-
-          // Extract location
-          const $location = $card.find('.companyLocation, [data-testid="text-location"]').first()
-          const location = $location.text().trim() || 'Remote'
-
-          // Build job URL
-          const url = `https://br.indeed.com/viewjob?jk=${jobId}`
-
-          // Extract salary if available
-          const $salary = $card.find('.salary-snippet, .salaryText, [data-testid="attribute_snippet_testid"]').first()
-          const salary = $salary.text().trim() || undefined
-
-          // Extract job snippet/description
-          const $snippet = $card.find('.job-snippet, [data-testid="job-snippet"]').first()
-          const description = $snippet.text().trim() || title
-
-          // Extract employment type
-          const $metadata = $card.find('.metadata, .jobMetaDataGroup')
-          const metadataText = $metadata.text()
-          let employmentType: string | undefined
-
-          if (metadataText.includes('Tempo integral') || metadataText.includes('Full-time')) {
-            employmentType = 'Full-time'
-          } else if (metadataText.includes('Meio período') || metadataText.includes('Part-time')) {
-            employmentType = 'Part-time'
-          } else if (metadataText.includes('Contrato') || metadataText.includes('Contract')) {
-            employmentType = 'Contract'
-          }
-
-          // Extract posted date
-          const $date = $card.find('.date, [data-testid="myJobsStateDate"]').first()
-          const postedDate = $date.text().trim() || undefined
-
-          // Extract skills from description
-          const requiredSkills = this.extractSkillsFromText(description)
-
-          jobs.push({
-            externalId: jobId,
-            platform: 'indeed-br',
-            title,
-            company,
-            location,
-            url,
-            description,
-            salary,
-            employmentType,
-            postedDate,
-            requiredSkills,
-            scrapedAt: new Date(),
-          })
-        } catch (error) {
-          this.logger.warn('Failed to parse job card', {
-            error: (error as Error).message,
-          })
-        }
-      })
-    } catch (error) {
-      this.logger.error('Failed to parse HTML', {
-        error: (error as Error).message,
-      })
+      await context.close()
+    } catch (err) {
+      this.logger.error('indeed_scraper_failed', { error: String(err) })
+    } finally {
+      await browser.close()
     }
 
-    return jobs
-  }
-
-  /**
-   * Extract common tech skills from job description text
-   */
-  private extractSkillsFromText(text: string): string[] {
-    const skills: string[] = []
-    const lowerText = text.toLowerCase()
-
-    // Common tech skills to look for
-    const skillPatterns = [
-      'javascript', 'typescript', 'python', 'java', 'c#', 'php', 'ruby', 'go', 'rust',
-      'react', 'angular', 'vue', 'node.js', 'next.js', 'express',
-      'sql', 'postgresql', 'mysql', 'mongodb', 'redis',
-      'docker', 'kubernetes', 'aws', 'azure', 'gcp',
-      'git', 'ci/cd', 'agile', 'scrum',
-    ]
-
-    for (const skill of skillPatterns) {
-      if (lowerText.includes(skill)) {
-        skills.push(skill)
-      }
-    }
-
-    // Remove duplicates using Array.from instead of spread
-    return Array.from(new Set(skills))
-  }
-
-  /**
-   * Delay helper for respectful scraping
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms))
+    this.logger.info('indeed_scrape_complete', { total: jobs.length })
+    return jobs.slice(0, this.config.maxJobsPerRun)
   }
 }

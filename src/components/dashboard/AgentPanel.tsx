@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
-import { Play, RefreshCw } from 'lucide-react'
+import { Play, RefreshCw, Loader2 } from 'lucide-react'
 import { StatusBeacon, StatCard } from '@/components/design-system'
 import {
   getAgentStatusAction,
@@ -35,10 +35,13 @@ const STATUS_BEACON: Record<string, 'success' | 'pending' | 'error' | 'muted'> =
 }
 
 function RunLogCard({ log }: { log: AgentRunLog }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(log.status === 'running')
+  const isRunning = log.status === 'running'
 
   return (
-    <div className="bg-surface-container-low rounded-[1.5rem] border border-outline-variant/10 overflow-hidden">
+    <div className={`bg-surface-container-low rounded-[1.5rem] overflow-hidden transition-all ${
+      isRunning ? 'border border-primary-container/20 shadow-neon' : 'border border-outline-variant/10'
+    }`}>
       <button
         className="w-full flex items-center justify-between p-5 text-left hover:bg-surface-container-high/50 transition-colors"
         onClick={() => setExpanded((v) => !v)}
@@ -46,11 +49,16 @@ function RunLogCard({ log }: { log: AgentRunLog }) {
         <div className="flex items-center gap-3">
           <StatusBeacon
             variant={log.status === 'completed' ? 'success' : log.status === 'failed' ? 'error' : 'pending'}
-            pulse={log.status === 'running'}
+            pulse={isRunning}
           />
           <div>
-            <p className="text-sm font-headline font-semibold text-on-surface">
+            <p className="text-sm font-headline font-semibold text-on-surface flex items-center gap-2">
               Run {log.runId.slice(-8)}
+              {isRunning && (
+                <span className="text-[9px] font-label uppercase tracking-widest text-primary-container bg-primary-container/10 px-2 py-0.5 rounded-full">
+                  live
+                </span>
+              )}
             </p>
             <p className="text-[10px] font-label uppercase tracking-widest text-outline mt-0.5">
               {format(new Date(log.startedAt), 'MMM d, yyyy · HH:mm')}
@@ -97,6 +105,13 @@ function RunLogCard({ log }: { log: AgentRunLog }) {
               </span>
             </div>
           ))}
+          {isRunning && (
+            <div className="flex gap-3 text-xs font-mono items-center">
+              <span className="text-outline shrink-0 w-16">now</span>
+              <Loader2 className="w-3 h-3 text-primary-container animate-spin shrink-0" />
+              <span className="text-primary-container/70">processing...</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -114,24 +129,54 @@ export function AgentPanel() {
   const [logs, setLogs] = useState<AgentRunLog[]>([])
   const [triggering, setTriggering] = useState(false)
   const [loading, setLoading] = useState(true)
+  const prevStatusRef = useRef<string | null>(null)
 
   const refresh = useCallback(async () => {
     const [s, l] = await Promise.all([getAgentStatusAction(), getAgentLogsAction()])
+
+    // When transitioning from running → idle, do one extra refresh after a short delay
+    // to catch the finalized run log
+    if (prevStatusRef.current === 'running' && s.status !== 'running') {
+      setTimeout(async () => {
+        const [s2, l2] = await Promise.all([getAgentStatusAction(), getAgentLogsAction()])
+        setStatus(s2)
+        setLogs(l2)
+      }, 1500)
+    }
+
+    prevStatusRef.current = s.status
     setStatus(s)
     setLogs(l)
     setLoading(false)
   }, [])
 
+  // Adaptive polling: 3s when running, 15s when idle — also fires on mount
   useEffect(() => {
     refresh()
-    const interval = setInterval(refresh, 15_000)
+    const interval = setInterval(refresh, status?.status === 'running' ? 3000 : 15000)
     return () => clearInterval(interval)
-  }, [refresh])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status?.status])
 
   async function handleTrigger() {
+    console.log('[AgentPanel] handleTrigger called')
     setTriggering(true)
-    await triggerAgentRunAction()
-    await refresh()
+    try {
+      console.log('[AgentPanel] calling triggerAgentRunAction...')
+      const result = await triggerAgentRunAction()
+      console.log('[AgentPanel] result:', result)
+      if (!result.ok) {
+        console.error('[AgentPanel] trigger failed:', result.error)
+        alert(`Failed to start agent: ${result.error}`)
+      } else {
+        // Start polling fast immediately after trigger
+        await new Promise((r) => setTimeout(r, 800))
+        await refresh()
+      }
+    } catch (err) {
+      console.error('[AgentPanel] trigger error:', err)
+      alert(`Error: ${String(err)}`)
+    }
     setTriggering(false)
   }
 
@@ -169,18 +214,20 @@ export function AgentPanel() {
             <h2 className="font-headline text-2xl font-bold text-on-surface">
               {STATUS_LABEL[agentStatus] ?? agentStatus}
             </h2>
-            {status?.lastRunAt && (
+            {isRunning && status?.currentJob ? (
+              <p className="text-sm text-primary-container/80 mt-1 flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                {status.currentJob}
+              </p>
+            ) : status?.lastRunAt ? (
               <p className="text-sm text-on-surface-variant mt-1">
                 Last run {formatDistanceToNow(new Date(status.lastRunAt), { addSuffix: true })}
               </p>
-            )}
+            ) : null}
             {status?.nextRunAt && (
               <p className="text-[10px] font-label uppercase tracking-widest text-outline mt-1">
                 Next run: {format(new Date(status.nextRunAt), 'HH:mm')}
               </p>
-            )}
-            {status?.currentJob && (
-              <p className="text-xs text-secondary mt-1">Processing: {status.currentJob}</p>
             )}
           </div>
         </div>
@@ -198,11 +245,13 @@ export function AgentPanel() {
             className="flex items-center gap-2 px-5 py-3 rounded-[1rem] gradient-primary text-on-primary text-sm font-bold shadow-[0px_0px_20px_rgba(0,255,136,0.2)] hover:shadow-[0px_0px_25px_rgba(0,255,136,0.4)] transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
           >
             {triggering ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isRunning ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Play className="w-4 h-4" />
             )}
-            {triggering ? 'Triggering...' : 'Run now'}
+            {triggering ? 'Triggering...' : isRunning ? 'Running...' : 'Run now'}
           </button>
         </div>
       </div>
@@ -213,18 +262,22 @@ export function AgentPanel() {
           <StatCard
             label="Total runs"
             value={logs.length}
+            tooltip="Number of times the pipeline was triggered (manually or by the scheduler)."
           />
           <StatCard
-            label="Applications submitted"
-            value={logs.reduce((s, l) => s + l.applicationsSubmitted, 0)}
-          />
-          <StatCard
-            label="Jobs processed"
+            label="Jobs scraped"
             value={logs.reduce((s, l) => s + l.applicationsProcessed, 0)}
+            tooltip="Total job listings collected across all platforms in all runs."
+          />
+          <StatCard
+            label="Matched jobs"
+            value={logs.reduce((s, l) => s + l.applicationsSubmitted, 0)}
+            tooltip="Jobs that passed semantic matching (score ≥ threshold) and were queued for CV generation and form filling."
           />
           <StatCard
             label="Errors"
             value={logs.reduce((s, l) => s + l.errors, 0)}
+            tooltip="Total scraping or processing errors across all runs. Check run logs for details."
           />
         </div>
       )}
