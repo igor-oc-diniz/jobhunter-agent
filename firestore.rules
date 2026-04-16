@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ARCHITECTURE NOTE
+//
+// All Firestore reads and writes from the application go through the Admin SDK
+// (Server Actions + agent). The Admin SDK bypasses these rules entirely.
+//
+// These rules exist purely as a defensive perimeter: they ensure that even if
+// someone obtains the public firebaseConfig and tries to access the database
+// directly from a browser or script, they cannot read or modify any data.
+// ─────────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──────────────────────────────────────────────────────
+
+    // Returns true if the request comes from a logged-in user.
+    // request.auth is null for unauthenticated requests.
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Returns true if the logged-in user's UID matches the {userId} path
+    // segment. This is the core ownership check used throughout the rules.
+    //
+    // Example: a user with UID "abc123" trying to read
+    //   /users/abc123/profile/data  → isOwner("abc123") → true  ✓
+    //   /users/xyz999/profile/data  → isOwner("xyz999") → false ✗
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+
+    // ── users/{userId}/** ─────────────────────────────────────────────────────
+    //
+    // Everything under a user's subtree is private to that user.
+    // The ** wildcard matches any depth of subcollections and documents
+    // (profile/data, rawJobs/xyz, applications/xyz, etc.).
+    //
+    // We allow read AND write here so that if we ever add a client-side feature
+    // that needs direct Firestore access (e.g. real-time notifications via
+    // onSnapshot), the rule is already correct. Today, the Admin SDK handles
+    // all writes, so the "write" permission is never actually exercised from
+    // the browser.
+    match /users/{userId}/{document=**} {
+      allow read, write: if isOwner(userId);
+    }
+
+
+    // ── system/platformStatus/{platform} ─────────────────────────────────────
+    //
+    // Platform status documents (e.g. whether Indeed is up) are written
+    // exclusively by the Admin SDK. No client should ever write here.
+    //
+    // We deny all client access. Reads are also denied because the dashboard
+    // fetches this data via Server Actions, not the Client SDK.
+    match /system/{document=**} {
+      allow read, write: if false;
+    }
+
+
+    // ── Catch-all: deny everything else ──────────────────────────────────────
+    //
+    // Any path not matched above is denied by default in Firestore, but this
+    // explicit rule makes the intent clear: if a new top-level collection is
+    // added without a corresponding rule, it is locked down automatically.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+  }
+}
