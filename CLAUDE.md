@@ -6,19 +6,19 @@ Autonomous job application agent: scrapes jobs → semantic matching → persona
 
 ## Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Agent runtime | Node.js 20+, TypeScript strict |
-| LLM | Claude API (`claude-sonnet-4-5`) |
+| Layer              | Technology                                       |
+| ------------------ | ------------------------------------------------ |
+| Agent runtime      | Node.js 20+, TypeScript strict                   |
+| LLM                | Claude API (`claude-sonnet-4-5`)                 |
 | Browser automation | Playwright + `playwright-extra` + stealth plugin |
-| HTTP scraping | Axios + Cheerio |
-| PDF generation | Puppeteer → Handlebars HTML → A4 PDF |
-| Job queue | BullMQ + Redis (Upstash) |
-| Logger | Winston (structured JSON) |
-| Frontend | Next.js 14 App Router, Tailwind, shadcn/ui |
-| State / data | Zustand, React Query, Firestore SDK |
-| Database | Firebase Firestore + Storage + Auth |
-| Email | Resend |
+| HTTP scraping      | Axios + Cheerio                                  |
+| PDF generation     | Puppeteer → Handlebars HTML → A4 PDF             |
+| Job queue          | BullMQ + Redis (Upstash)                         |
+| Logger             | Winston (structured JSON)                        |
+| Frontend           | Next.js 14 App Router, Tailwind, shadcn/ui       |
+| State / data       | Zustand, React Query, Firestore SDK              |
+| Database           | Firebase Firestore + Storage + Auth              |
+| Email              | Resend                                           |
 
 ---
 
@@ -76,18 +76,6 @@ system/platformStatus/{platform}/ → write via Admin SDK only
 
 Read `docs/designsystem/` before creating any UI component.
 
-- **Background**: `bg-background` (#131313) — never `bg-black`
-- **Primary**: `primary-container` (#00ff88); **secondary**: `secondary-container` (#00e0ff)
-- **Surfaces** (dark→light): `surface-container-lowest` → `low` → `surface-container` → `high` → `highest`
-- **No borders for layout** — use surface level shifts instead
-- **Rounding**: min `rounded-[1rem]`; cards `rounded-[1.5rem]`; modals `rounded-[2rem]`
-- **Glass**: `glass-panel` utility; **shadows**: `shadow-neon` only
-- **Fonts**: `font-headline`/`font-label` = Space Grotesk; `font-body` = Manrope
-- **Hover cards**: `hover:scale-[1.02] hover:border-primary-container/20 hover:shadow-neon`
-- **Section headers**: `text-[10px] font-label uppercase tracking-widest text-outline`
-- **Atoms**: `src/components/design-system/atoms/` — `StatusBeacon`, `StatusBadge`, `ScoreBadge`, `Chip`
-- **Molecules**: `src/components/design-system/molecules/` — `StatCard`, `NotificationItem`
-
 ---
 
 ## Code Conventions
@@ -96,7 +84,7 @@ Read `docs/designsystem/` before creating any UI component.
 - **Files**: kebab-case
 - **Async**: always explicit `try/catch` with logger
 - **Logs**: structured JSON `{ level, action, timestamp }` — never log credentials
-- **Commits**: Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
+- **Commits**: use the skill commit-helper-skill
 - **TypeScript**: strict, no implicit `any`
 - **Claude JSON**: always validate with Zod before using
 - **Firebase client**: never call `getAuth()` / `getDb()` / `getStorage()` at module level
