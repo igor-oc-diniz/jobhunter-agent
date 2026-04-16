@@ -12,9 +12,12 @@ import { ArbeitnowScraper } from './scrapers/arbeitnow-scraper'
 import { IndeedCAScraper } from './scrapers/indeed-ca-scraper'
 import { IndeedAUScraper } from './scrapers/indeed-au-scraper'
 import { runMatching } from './matching/matcher'
+import { generateCV } from './cv/cv-generator'
+import { generateCoverLetter } from './cover-letter/cover-letter-generator'
 import { createLogger } from './utils/logger'
 import { loadConfig } from './utils/config'
-import type { RawJob, UserProfile } from '@/types'
+import type { RawJob, UserProfile, MatchDetails } from '@/types'
+import type { Application } from '@/types/application'
 import type { NormalizedJob, ScraperConfig } from '@/types/scraper'
 
 const logger = createLogger('pipeline')
@@ -64,6 +67,7 @@ export interface PipelineResult {
   saved: number
   matched: number
   rejected: number
+  cvGenerated: number
   errors: string[]
 }
 
@@ -175,6 +179,88 @@ export async function runPipeline(userId: string): Promise<PipelineResult> {
   ])
 
   addEntry('info', 'matching_done', `${matchedSnap.size} vagas aprovadas, ${rejectedSnap.size} rejeitadas`)
+
+  // Step 3: CV + Cover Letter generation for matched jobs
+  const maxApplications = profile.agentConfig?.maxApplicationsPerDay ?? 10
+  const matchedJobs = matchedSnap.docs.slice(0, maxApplications)
+  let cvGenerated = 0
+
+  await setStatus(userId, { currentJob: `Gerando CV e cartas para ${matchedJobs.length} vagas...` })
+  addEntry('info', 'cv_generation_start', `Iniciando geração de CV para ${matchedJobs.length} vagas`)
+  await adminDb.doc(`users/${userId}/agentLogs/${runId}`).update({ entries: logEntries })
+
+  for (const doc of matchedJobs) {
+    const job = doc.data() as RawJob
+    const jobId = doc.id
+    const matchDetails = job.matchDetails as MatchDetails
+
+    // Skip if application already exists with CV
+    const appSnap = await adminDb.doc(`users/${userId}/applications/${jobId}`).get()
+    if (appSnap.exists && appSnap.data()?.cvUrl) {
+      addEntry('info', 'cv_cache_hit', `CV já existe para ${job.title} @ ${job.company}`)
+      cvGenerated++
+      continue
+    }
+
+    // Create or update Application document
+    const now = FieldValue.serverTimestamp()
+    const appData: Partial<Application> = {
+      jobId,
+      userId,
+      jobSnapshot: {
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        isRemote: job.isRemote,
+        techStack: job.techStack,
+        salaryMin: job.salaryMin,
+        salaryMax: job.salaryMax,
+        contractType: job.contractType,
+        sourceUrl: job.sourceUrl,
+        sourcePlatform: job.sourcePlatform,
+      },
+      status: 'queued',
+      matchScore: job.matchScore ?? 0,
+      stages: [],
+      createdAt: now as never,
+      updatedAt: now as never,
+    }
+    await adminDb.doc(`users/${userId}/applications/${jobId}`).set(appData, { merge: true })
+
+    try {
+      await setStatus(userId, { currentJob: `Gerando CV: ${job.title} @ ${job.company}` })
+
+      const [cvResult, coverLetterText] = await Promise.all([
+        generateCV(userId, jobId, job, profile, matchDetails),
+        generateCoverLetter(userId, jobId, job, profile, matchDetails),
+      ])
+
+      await adminDb.doc(`users/${userId}/applications/${jobId}`).set(
+        {
+          cvUrl: cvResult.pdfUrl,
+          cvGeneratedAt: cvResult.generatedAt,
+          coverLetterText,
+          coverLetterGeneratedAt: now,
+          status: 'awaiting_confirmation',
+          updatedAt: now,
+        },
+        { merge: true }
+      )
+
+      cvGenerated++
+      addEntry('info', 'cv_generated', `CV e carta gerados para ${job.title} @ ${job.company}`)
+    } catch (err) {
+      const msg = String(err)
+      errors.push(msg)
+      addEntry('error', 'cv_generation_error', `Erro ao gerar CV para ${job.title}: ${msg}`)
+      await adminDb.doc(`users/${userId}/applications/${jobId}`).set(
+        { status: 'failed', updatedAt: now },
+        { merge: true }
+      )
+    }
+  }
+
+  addEntry('info', 'cv_generation_done', `${cvGenerated} CVs gerados`)
   addEntry('info', 'pipeline_done', 'Pipeline concluído com sucesso')
 
   // Finalize run log
@@ -198,6 +284,7 @@ export async function runPipeline(userId: string): Promise<PipelineResult> {
     saved,
     matched: matchedSnap.size,
     rejected: rejectedSnap.size,
+    cvGenerated,
     errors,
   }
 
