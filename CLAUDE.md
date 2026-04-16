@@ -200,17 +200,31 @@ Even in automatic mode, the agent must pause and notify the user for:
 |----------|-----------|---------------------|--------|
 | Remotive | Public REST API (axios) | None | ✅ implemented |
 | Indeed BR | Playwright + stealth | High | ✅ implemented |
-| We Work Remotely | Cheerio + HTTP | Very low | planned |
-| Wellfound (AngelList) | Playwright | Medium | planned |
-| Himalayas | Cheerio + HTTP | Low | planned |
+| We Work Remotely | RSS + Cheerio (axios) | Very low | ✅ implemented |
+| Wellfound (AngelList) | Playwright + stealth | High (DataDome) | ✅ implemented |
+| Himalayas | Public JSON API (axios) | Low | ✅ implemented |
+| RemoteOK | Public JSON API (axios) | None | ✅ implemented |
+| Arbeitnow | Public JSON API (axios) | None | ✅ implemented |
+| Indeed CA | Playwright + stealth | High | ✅ implemented |
+| Indeed AU | Playwright + stealth | High | ✅ implemented |
 | LinkedIn | Playwright | High | out of scope (v1) |
 | Gupy | Playwright (SPA) | Low | deprioritized — poor application UX |
 
 **Default platforms** (env `SCRAPER_PLATFORMS`): `remotive,indeed-br`
 
-**Remotive implementation note**: Uses the public REST API (`remotive.com/api/remote-jobs`). Fetches three categories: `software-dev`, `devops-sysadmin`, `data`. No browser required — pure axios. Tags array from API is merged with skill pattern extraction from description.
+**Remotive**: Public REST API (`remotive.com/api/remote-jobs`). Categories: `software-dev`, `devops-sysadmin`, `data`. No browser — pure axios.
 
-**Indeed BR implementation note**: Direct HTTP/Cheerio is blocked by Cloudflare (`cf-mitigated: challenge`). Scraper uses `playwright-extra` + `puppeteer-extra-plugin-stealth`. Job data is extracted from `window.mosaic.providerData["mosaic-provider-jobcards"]` embedded JSON in the page HTML — more reliable than CSS selectors which change frequently.
+**Indeed BR / CA / AU**: Playwright + stealth. Job data extracted from `window.mosaic.providerData["mosaic-provider-jobcards"]` embedded JSON. BR uses `pt-BR`/`America/Sao_Paulo`, CA uses `en-CA`/`America/Toronto`, AU uses `en-AU`/`Australia/Sydney`.
+
+**We Work Remotely**: RSS feeds for 5 dev categories. Parses "Company | Title" format in `<title>` tags. Per-feed job budget to spread across categories.
+
+**Himalayas**: `https://himalayas.app/jobs/api` — paginated 100/page up to 5 pages. API ignores category params; filter applied client-side via `DEV_CATEGORY_PATTERNS`.
+
+**RemoteOK**: `https://remoteok.com/api` — first element is metadata (skipped). Requires `Referer: https://remoteok.com/` header (403 without it).
+
+**Arbeitnow**: `https://www.arbeitnow.com/api/job-board-api` — EU/Germany-focused. Paginated, stops when `data.links.next` is absent.
+
+**Wellfound**: Playwright + stealth. Primary: `__NEXT_DATA__` recursive JSON walker. Fallback: `window.__APOLLO_STATE__`. Detects DataDome/Cloudflare challenge and exits cleanly with 0 jobs.
 
 All scrapers share a `BaseScraper` abstract class. Failures per platform are isolated — one failing platform does not stop the others.
 
@@ -389,7 +403,7 @@ users/{userId}/
 
 ### Git branches
 - `main` — stable base
-- `feat/agent-dashboard-integration` — current branch
+- `develop` — current integration branch
 
 ### What is implemented
 | Feature | Status | Key files |
@@ -411,18 +425,22 @@ users/{userId}/
 | Indeed BR scraper | ✅ Done | `src/agent/scrapers/indeed-br-scraper.ts` — Playwright + stealth, parses embedded JSON |
 | Agent real-time UX | ✅ Done | `AgentPanel.tsx` adaptive polling (3s/15s), live step label, run logs written to Firestore |
 | Remotive scraper | ✅ Done | `src/agent/scrapers/remotive-scraper.ts` — public REST API, categories: software-dev, devops, data |
+| We Work Remotely scraper | ✅ Done | `src/agent/scrapers/weworkremotely-scraper.ts` — RSS feeds (5 dev categories), axios + cheerio |
+| Himalayas scraper | ✅ Done | `src/agent/scrapers/himalayas-scraper.ts` — JSON API, paginated, client-side category filter |
+| Wellfound scraper | ✅ Done | `src/agent/scrapers/wellfound-scraper.ts` — Playwright + stealth, `__NEXT_DATA__` extraction, DataDome detection |
+| RemoteOK scraper | ✅ Done | `src/agent/scrapers/remoteok-scraper.ts` — public JSON API, requires `Referer` header |
+| Arbeitnow scraper | ✅ Done | `src/agent/scrapers/arbeitnow-scraper.ts` — public JSON API, EU-focused, paginated |
+| Indeed CA scraper | ✅ Done | `src/agent/scrapers/indeed-ca-scraper.ts` — Playwright + stealth, `ca.indeed.com`, mosaic JSON |
+| Indeed AU scraper | ✅ Done | `src/agent/scrapers/indeed-au-scraper.ts` — Playwright + stealth, `au.indeed.com`, mosaic JSON |
+| CV Generation (Module 04) | ✅ Done | `src/agent/cv/cv-generator.ts` — Claude → Handlebars → Puppeteer PDF → Firebase Storage |
+| Cover Letter (Module 05) | ✅ Done | `src/agent/cover-letter/cover-letter-generator.ts` — Claude, auto-detects tone + language |
 
 ### What is NOT implemented yet
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| We Work Remotely scraper | High — next | Cheerio + HTTP, no anti-bot |
-| Wellfound scraper | High | Playwright, startup/international jobs |
-| Himalayas scraper | Medium | Cheerio + HTTP, remote-focused |
 | Deploy agent container (Fly.io) | High | `src/agent/fly.toml` ready, needs env vars + deploy |
 | Firestore security rules | Medium | Module 07 — rules + composite indexes not deployed |
 | BullMQ / Redis queue | Medium | Upstash Redis vars empty |
-| CV Generation (Module 04) | Medium | Not started |
-| Cover Letter (Module 05) | Medium | Not started |
 | Form Filler (Module 06) | Medium | Not started |
 | Transactional email (Resend) | Low | Module 12 email side — only in-app notifications done |
 
@@ -431,6 +449,7 @@ users/{userId}/
 - `useSearchParams()` Suspense wrapping needed on new pages that use search params
 - Agent health status shows `degraded` locally due to memory threshold (expected — tsx uses more RAM than production container)
 - `.env.local` comments inline break env var parsing — never add `# comment` after a value on the same line
+- `HimalayadScraper` class name has a typo (double `d`) — functional but should be renamed in a future cleanup
 
 ### AgentPanel metrics mapping
 | UI label | Firestore field | What it counts |
@@ -440,12 +459,12 @@ users/{userId}/
 | Matched jobs | `applicationsSubmitted` | Jobs that passed matching → `applicationQueue` |
 | Errors | `errors` | Scraping/processing failures per run |
 
-> `applicationsSubmitted` is populated with `matchedSnap.size` in `pipeline.ts`. The name is inherited from the `AgentRunLog` type and will map to real form submissions once Module 06 (Form Filler) is implemented.
+> `applicationsSubmitted` is populated with `matchedSnap.size` in `pipeline.ts`. The name will map to real form submissions once Module 06 (Form Filler) is implemented.
 
 ### Next recommended steps
-1. **Gupy scraper** — Playwright SPA scraper
-2. Deploy agent container to Fly.io
-3. Module 04 — CV Generation
+1. Deploy agent container to Fly.io
+2. Module 06 — Form Filler (Playwright DOM mapping + Claude field filling)
+3. Firestore security rules (Module 07)
 
 ### Module 01b — Profile Import: Implementation Notes
 
