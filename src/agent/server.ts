@@ -31,14 +31,18 @@ export function createServer() {
       return
     }
 
+    console.log(`[server] POST /run received — userId: ${userId}`)
     logger.info('run_triggered', { userId })
 
     // Respond immediately — pipeline runs in background
     res.json({ ok: true, message: 'Pipeline started' })
 
-    runPipeline(userId).catch((err) => {
-      logger.error('pipeline_error', { userId, error: String(err) })
-    })
+    runPipeline(userId)
+      .then((result) => console.log('[server] pipeline done:', result))
+      .catch((err) => {
+        console.error('[server] pipeline error:', err)
+        logger.error('pipeline_error', { userId, error: String(err) })
+      })
   })
 
   return app

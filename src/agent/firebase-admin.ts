@@ -22,6 +22,8 @@ try {
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
     })
 
+    admin.firestore().settings({ ignoreUndefinedProperties: true })
+
     initialized = true
   }
 } catch (error) {

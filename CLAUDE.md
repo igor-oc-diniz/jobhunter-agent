@@ -192,15 +192,25 @@ Even in automatic mode, the agent must pause and notify the user for:
 
 ---
 
-## Scraping Platforms (V1)
+## Scraping Platforms
 
-| Platform | Strategy | Anti-bot difficulty |
-|----------|-----------|---------------------|
-| Gupy | Playwright (SPA) | Low |
-| Indeed BR | Cheerio + HTTP | Medium |
-| LinkedIn | Playwright | High |
-| InfoJobs | Cheerio + HTTP | Low |
-| Catho | Playwright | Medium |
+**Focus: international / remote-first jobs.**
+
+| Platform | Strategy | Anti-bot difficulty | Status |
+|----------|-----------|---------------------|--------|
+| Remotive | Public REST API (axios) | None | ✅ implemented |
+| Indeed BR | Playwright + stealth | High | ✅ implemented |
+| We Work Remotely | Cheerio + HTTP | Very low | planned |
+| Wellfound (AngelList) | Playwright | Medium | planned |
+| Himalayas | Cheerio + HTTP | Low | planned |
+| LinkedIn | Playwright | High | out of scope (v1) |
+| Gupy | Playwright (SPA) | Low | deprioritized — poor application UX |
+
+**Default platforms** (env `SCRAPER_PLATFORMS`): `remotive,indeed-br`
+
+**Remotive implementation note**: Uses the public REST API (`remotive.com/api/remote-jobs`). Fetches three categories: `software-dev`, `devops-sysadmin`, `data`. No browser required — pure axios. Tags array from API is merged with skill pattern extraction from description.
+
+**Indeed BR implementation note**: Direct HTTP/Cheerio is blocked by Cloudflare (`cf-mitigated: challenge`). Scraper uses `playwright-extra` + `puppeteer-extra-plugin-stealth`. Job data is extracted from `window.mosaic.providerData["mosaic-provider-jobcards"]` embedded JSON in the page HTML — more reliable than CSS selectors which change frequently.
 
 All scrapers share a `BaseScraper` abstract class. Failures per platform are isolated — one failing platform does not stop the others.
 
@@ -375,14 +385,13 @@ users/{userId}/
 
 ---
 
-## Current Project State (as of 2026-04-12)
+## Current Project State (as of 2026-04-16)
 
 ### Git branches
 - `main` — stable base
-- `develop` — merged branches: Neon Command design system (PR #1), code quality refactor (PR #2), agent/settings/notifications (PR #5)
-- `feat/profile-import-step` — **open PR, not yet merged** — Module 01b profile import
+- `feat/agent-dashboard-integration` — current branch
 
-### What is implemented (dashboard frontend)
+### What is implemented
 | Feature | Status | Key files |
 |---------|--------|-----------|
 | Neon Command design system | ✅ Done | `src/app/globals.css`, `src/components/design-system/` |
@@ -396,26 +405,47 @@ users/{userId}/
 | Agent panel (`/agent`) | ✅ Done | `src/components/dashboard/AgentPanel.tsx`, `src/app/actions/agent.ts` |
 | Settings form (`/settings`) | ✅ Done | `src/components/dashboard/SettingsForm.tsx`, `src/app/actions/settings.ts` |
 | Notification center (topbar) | ✅ Done | `src/components/dashboard/NotificationCenter.tsx`, `src/app/actions/notifications.ts` |
+| Agent HTTP server | ✅ Done | `src/agent/server.ts` — Express on port 3001, `POST /run` triggers pipeline |
+| Agent ↔ Dashboard integration | ✅ Done | Dashboard "Run now" → `triggerAgentRunAction` → `POST localhost:3001/run` → pipeline |
+| Semantic Matching (Module 03) | ✅ Done | `src/agent/matching/matcher.ts` — weighted score + Claude analysis + Zod validation |
+| Indeed BR scraper | ✅ Done | `src/agent/scrapers/indeed-br-scraper.ts` — Playwright + stealth, parses embedded JSON |
+| Agent real-time UX | ✅ Done | `AgentPanel.tsx` adaptive polling (3s/15s), live step label, run logs written to Firestore |
+| Remotive scraper | ✅ Done | `src/agent/scrapers/remotive-scraper.ts` — public REST API, categories: software-dev, devops, data |
 
 ### What is NOT implemented yet
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| **Semantic Matching (Module 03)** | **High — next** | Weighted score 0-100 + Claude analysis |
-| Agent ↔ Dashboard integration | High | Trigger button calling container via HTTP or BullMQ |
-| Deploy agent container (Fly.io) | High | Container ready, needs env vars + deploy |
+| We Work Remotely scraper | High — next | Cheerio + HTTP, no anti-bot |
+| Wellfound scraper | High | Playwright, startup/international jobs |
+| Himalayas scraper | Medium | Cheerio + HTTP, remote-focused |
+| Deploy agent container (Fly.io) | High | `src/agent/fly.toml` ready, needs env vars + deploy |
 | Firestore security rules | Medium | Module 07 — rules + composite indexes not deployed |
-| BullMQ / Redis queue | Medium | Upstash Redis vars empty — blocked until agent deploy |
+| BullMQ / Redis queue | Medium | Upstash Redis vars empty |
+| CV Generation (Module 04) | Medium | Not started |
+| Cover Letter (Module 05) | Medium | Not started |
+| Form Filler (Module 06) | Medium | Not started |
 | Transactional email (Resend) | Low | Module 12 email side — only in-app notifications done |
 
 ### Known issues / tech debt
 - Next.js middleware deprecation warning: `middleware` → `proxy` (cosmetic, not breaking)
 - `useSearchParams()` Suspense wrapping needed on new pages that use search params
 - Agent health status shows `degraded` locally due to memory threshold (expected — tsx uses more RAM than production container)
+- `.env.local` comments inline break env var parsing — never add `# comment` after a value on the same line
+
+### AgentPanel metrics mapping
+| UI label | Firestore field | What it counts |
+|----------|----------------|----------------|
+| Total runs | `agentLogs` doc count | Pipeline triggers (manual or cron) |
+| Jobs scraped | `applicationsProcessed` | Raw jobs collected by scrapers |
+| Matched jobs | `applicationsSubmitted` | Jobs that passed matching → `applicationQueue` |
+| Errors | `errors` | Scraping/processing failures per run |
+
+> `applicationsSubmitted` is populated with `matchedSnap.size` in `pipeline.ts`. The name is inherited from the `AgentRunLog` type and will map to real form submissions once Module 06 (Form Filler) is implemented.
 
 ### Next recommended steps
-1. **Module 03** — Semantic Matching in agent container
-2. Agent ↔ Dashboard HTTP integration (trigger button → POST to container)
-3. Deploy agent container to Fly.io
+1. **Gupy scraper** — Playwright SPA scraper
+2. Deploy agent container to Fly.io
+3. Module 04 — CV Generation
 
 ### Module 01b — Profile Import: Implementation Notes
 
