@@ -92,17 +92,17 @@ export function StepObjective({ defaultValues, onBack, onNext }: Props) {
 
         <div className="space-y-1">
           <Label htmlFor="availabilityDays">Availability (days)</Label>
-          <Input id="availabilityDays" type="number" min={0} {...register('availabilityDays')} />
+          <Input id="availabilityDays" type="number" min={0} {...register('availabilityDays', { valueAsNumber: true })} />
         </div>
 
         <div className="space-y-1">
           <Label htmlFor="salaryMin">Min salary (BRL) *</Label>
-          <Input id="salaryMin" type="number" min={0} {...register('salaryMin')} />
+          <Input id="salaryMin" type="number" min={0} {...register('salaryMin', { valueAsNumber: true })} />
           {errors.salaryMin && <p className="text-xs text-destructive">{errors.salaryMin.message}</p>}
         </div>
         <div className="space-y-1">
           <Label htmlFor="salaryMax">Max salary (BRL) *</Label>
-          <Input id="salaryMax" type="number" min={0} {...register('salaryMax')} />
+          <Input id="salaryMax" type="number" min={0} {...register('salaryMax', { valueAsNumber: true })} />
           {errors.salaryMax && <p className="text-xs text-destructive">{errors.salaryMax.message}</p>}
         </div>
       </div>

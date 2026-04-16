@@ -2,3 +2,4 @@ export type { UserProfile, AgentConfig, Experience, Education, TechnicalSkill, L
 export type { RawJob, BlacklistEntry, MatchDetails } from './job'
 export type { Application, ApplicationStatus, ApplicationQueueItem } from './application'
 export type { Notification, NotificationType } from './notification'
+export type { AgentStatus, AgentRunLog, AgentRunStatus, AgentLogEntry, AgentLogLevel } from './agent'

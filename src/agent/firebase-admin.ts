@@ -1,21 +1,38 @@
-import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
-import { getStorage } from 'firebase-admin/storage'
+import admin from 'firebase-admin'
 
-function initAdmin() {
-  if (getApps().length > 0) return getApps()[0]
+let initialized = false
 
-  return initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  })
+try {
+  if (!initialized && !admin.apps.length) {
+    const serviceAccountJSON = process.env.FIREBASE_SERVICE_ACCOUNT
+
+    if (!serviceAccountJSON) {
+      throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is not set')
+    }
+
+    let serviceAccount: admin.ServiceAccount
+    try {
+      serviceAccount = JSON.parse(serviceAccountJSON) as admin.ServiceAccount
+    } catch (parseError) {
+      throw new Error('Failed to parse FIREBASE_SERVICE_ACCOUNT JSON: ' + (parseError as Error).message)
+    }
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    })
+
+    admin.firestore().settings({ ignoreUndefinedProperties: true })
+
+    initialized = true
+  }
+} catch (error) {
+  console.error('Failed to initialize Firebase Admin SDK:', (error as Error).message)
+  throw error
 }
 
-initAdmin()
+export const adminDb = admin.firestore()
+export const adminStorage = admin.storage()
+export const adminAuth = admin.auth()
 
-export const adminDb = getFirestore()
-export const adminStorage = getStorage()
+export default admin

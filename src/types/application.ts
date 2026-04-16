@@ -1,5 +1,8 @@
 import type { Timestamp } from 'firebase/firestore'
 
+/** Dates come as Firestore Timestamp when read via client SDK, or ISO string when serialized via server actions */
+export type FirestoreDate = Timestamp | string
+
 export type ApplicationStatus =
   | 'queued'
   | 'processing'
@@ -39,18 +42,18 @@ export interface Application {
   }
 
   status: ApplicationStatus
-  appliedAt?: Timestamp
+  appliedAt?: FirestoreDate
   matchScore: number
 
   cvUrl?: string
-  cvGeneratedAt?: Timestamp
+  cvGeneratedAt?: FirestoreDate
   coverLetterText?: string
-  coverLetterGeneratedAt?: Timestamp
+  coverLetterGeneratedAt?: FirestoreDate
 
-  formFilledAt?: Timestamp
+  formFilledAt?: FirestoreDate
   formScreenshotUrl?: string
   confirmationText?: string
-  awaitingConfirmationSince?: Timestamp
+  awaitingConfirmationSince?: FirestoreDate
 
   currentStage?: string
   stages: ApplicationStage[]
@@ -59,8 +62,8 @@ export interface Application {
   recruiterContact?: string
   offerValue?: number
 
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  createdAt: FirestoreDate
+  updatedAt: FirestoreDate
 }
 
 export interface ApplicationQueueItem {

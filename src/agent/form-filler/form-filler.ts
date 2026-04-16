@@ -4,7 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { adminDb, adminStorage } from '../firebase-admin'
 import { createBrowser, createPage, detectCaptcha } from '../utils/browser-pool'
 import { humanDelay } from '../utils/human-delay'
-import { logger } from '../utils/logger'
+import logger from '../utils/logger'
 import type { Page } from 'playwright'
 import type { RawJob, UserProfile } from '@/types'
 

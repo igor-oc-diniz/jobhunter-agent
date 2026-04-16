@@ -6,8 +6,9 @@ import { runMatching } from '../matching/matcher'
 import { generateCV } from '../cv/cv-generator'
 import { generateCoverLetter } from '../cover-letter/cover-letter-generator'
 import { fillAndSubmitForm } from '../form-filler/form-filler'
-import { createRunLogger } from '../utils/logger'
+import { createLogger } from '../utils/logger'
 import { v4 as uuidv4 } from 'uuid'
+import { ORCHESTRATOR } from '@/lib/constants/agent'
 import type { UserProfile, RawJob, MatchDetails } from '@/types'
 
 const client = new Anthropic()
@@ -127,7 +128,7 @@ const tools: Anthropic.Tool[] = [
 
 export async function runAgentCycle(userId: string): Promise<void> {
   const runId = uuidv4()
-  const log = createRunLogger(runId, userId)
+  const log = createLogger('orchestrator').child({ runId, userId })
 
   const profile = await loadUserProfile(userId)
   if (!profile) {
@@ -166,7 +167,7 @@ Use the available tools. Make intelligent decisions:
   ]
 
   let iterations = 0
-  const maxIterations = 50
+  const maxIterations = ORCHESTRATOR.MAX_ITERATIONS
 
   while (iterations < maxIterations) {
     iterations++
@@ -200,8 +201,9 @@ Use the available tools. Make intelligent decisions:
       try {
         result = await dispatchTool(block.name, input, userId, profile, log)
       } catch (err) {
-        result = { error: String(err) }
-        log.error('tool_error', { tool: block.name, error: String(err) })
+        const message = err instanceof Error ? err.message : String(err)
+        result = { error: message }
+        log.error('tool_error', { tool: block.name, error: message })
       }
 
       toolResults.push({
@@ -222,7 +224,7 @@ Use the available tools. Make intelligent decisions:
     userId,
     completedAt: FieldValue.serverTimestamp(),
     status: 'completed',
-    entries: log.getEntries().slice(-100), // cap at 100 entries
+    entries: [],
   })
 
   log.info('cycle_finished', { iterations })
@@ -233,18 +235,15 @@ async function dispatchTool(
   input: Record<string, unknown>,
   userId: string,
   profile: UserProfile,
-  log: ReturnType<typeof createRunLogger>
+  log: ReturnType<typeof createLogger>
 ): Promise<unknown> {
   switch (name) {
     case 'run_scraper': {
       const scraper = getEnabledScrapers([input.platform as string])[0]
       if (!scraper) return { error: `Unknown platform: ${input.platform}` }
-      const jobs = await scraper.scrape(userId, {
-        keywords: input.keywords as string[],
-        maxPages: input.maxPages as number | undefined,
-      })
-      log.info('scraper_done', { platform: input.platform, jobsFound: jobs.length })
-      return { jobsFound: jobs.length }
+      const result = await scraper.run()
+      log.info('scraper_done', { platform: input.platform, jobsFound: result.jobsScraped })
+      return { jobsFound: result.jobsScraped }
     }
 
     case 'run_matching': {

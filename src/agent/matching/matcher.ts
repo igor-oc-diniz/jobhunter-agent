@@ -2,7 +2,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { FieldValue } from 'firebase-admin/firestore'
 import { adminDb } from '../firebase-admin'
-import { logger } from '../utils/logger'
+import logger from '../utils/logger'
+import { MATCHING } from '@/lib/constants/agent'
 import type { RawJob, UserProfile, MatchDetails } from '@/types'
 
 const client = new Anthropic()
@@ -57,12 +58,21 @@ Return ONLY the JSON below, no additional text:
 }`
 }
 
-function calculateFinalScore(job: RawJob, profile: UserProfile, claude: ClaudeMatchResult): number {
+interface ScoreBreakdown {
+  stackOverlap: number
+  seniorityScore: number
+  contractScore: number
+  modalityScore: number
+  salaryScore: number
+  finalScore: number
+}
+
+export function calculateScoreBreakdown(job: RawJob, profile: UserProfile, claude: ClaudeMatchResult): ScoreBreakdown {
   const weights = { stack: 0.35, seniority: 0.20, contract: 0.15, modality: 0.10, salary: 0.10, semantic: 0.10 }
 
   const userStack = profile.skills.technical.map((s) => s.name.toLowerCase())
   const jobStack = job.techStack.map((t) => t.toLowerCase())
-  const stackScore =
+  const stackOverlap =
     jobStack.length > 0
       ? (jobStack.filter((t) => userStack.includes(t)).length / jobStack.length) * 100
       : 50
@@ -89,14 +99,16 @@ function calculateFinalScore(job: RawJob, profile: UserProfile, claude: ClaudeMa
     salaryScore = job.salaryMax >= profile.objective.salaryMin ? 100 : 0
   }
 
-  return Math.round(
-    stackScore * weights.stack +
+  const finalScore = Math.round(
+    stackOverlap * weights.stack +
       seniorityScore * weights.seniority +
       contractScore * weights.contract +
       modalityScore * weights.modality +
       salaryScore * weights.salary +
       claude.semanticScore * weights.semantic
   )
+
+  return { stackOverlap, seniorityScore, contractScore, modalityScore, salaryScore, finalScore }
 }
 
 function preFilter(job: RawJob, profile: UserProfile): boolean {
@@ -112,7 +124,7 @@ function preFilter(job: RawJob, profile: UserProfile): boolean {
     ? jobStack.filter((t) => userStack.includes(t)).length / jobStack.length
     : 0.5
 
-  return overlap >= 0.1 // at least 10% stack overlap for pre-filter
+  return overlap >= MATCHING.MIN_STACK_OVERLAP // at least 10% stack overlap for pre-filter
 }
 
 export async function matchJob(
@@ -161,15 +173,16 @@ export async function matchJob(
     }
   }
 
-  const score = calculateFinalScore(job, profile, claude)
+  const breakdown = calculateScoreBreakdown(job, profile, claude)
+  const score = breakdown.finalScore
   const threshold = profile.agentConfig.minScore
 
   const matchDetails: Omit<MatchDetails, 'matchedAt'> = {
-    stackOverlap: 0,
-    seniorityScore: 0,
-    contractScore: 0,
-    modalityScore: 0,
-    salaryScore: 0,
+    stackOverlap: breakdown.stackOverlap,
+    seniorityScore: breakdown.seniorityScore,
+    contractScore: breakdown.contractScore,
+    modalityScore: breakdown.modalityScore,
+    salaryScore: breakdown.salaryScore,
     semanticScore: claude.semanticScore,
     positives: claude.positives,
     gaps: claude.gaps,
