@@ -14,7 +14,16 @@ export const AgentConfigSchema = z.object({
   runOnStartup: z.boolean().default(false),
 
   // Scrapers
-  scraperPlatforms: z.array(z.string()).default(['remotive', 'indeed-br']),
+  scraperPlatforms: z.array(z.string()).default([
+    'greenhouse',
+    'lever',
+    'remotive',
+    'weworkremotely',
+    'himalayas',
+    'remoteok',
+    'arbeitnow',
+    'wellfound',
+  ]),
   maxJobsPerRun: z.number().int().positive().default(50),
   scraperTimeout: z.number().int().positive().default(60000),
   userAgent: z.string().optional(),

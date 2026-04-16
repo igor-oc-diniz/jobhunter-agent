@@ -1,5 +1,11 @@
 import type { Timestamp } from 'firebase/firestore'
 
+export interface DescriptionSections {
+  aboutCompany: string
+  jobActivities: string
+  cultural: string
+}
+
 export interface RawJob {
   id: string
   userId: string
@@ -9,6 +15,7 @@ export interface RawJob {
   location: string
   isRemote: boolean
   description: string
+  descriptionSections?: DescriptionSections
   requirements?: string
   salaryMin?: number
   salaryMax?: number
