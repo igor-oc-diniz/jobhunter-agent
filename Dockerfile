@@ -9,7 +9,7 @@ RUN npm ci
 COPY tsconfig.agent.json ./
 COPY src/ ./src/
 
-RUN npx tsc -p tsconfig.agent.json
+RUN npx tsc -p tsconfig.agent.json && npx tsc-alias -p tsconfig.agent.json
 
 # ── Stage 2: Production ─────────────────────────────────────────────────────
 # Uses the official Playwright image so Chromium + system deps are pre-installed
