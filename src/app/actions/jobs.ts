@@ -3,6 +3,7 @@
 import { adminDb } from '@/agent/firebase-admin'
 import { requireUserId } from '@/lib/auth/server'
 import type { RawJob } from '@/types'
+import { FieldValue } from 'firebase-admin/firestore'
 
 export interface JobFilters {
   status?: RawJob['status'] | 'all'
@@ -23,6 +24,7 @@ export async function getRawJobsAction(filters?: JobFilters): Promise<RawJob[]> 
       ...data,
       id: d.id,
       scrapedAt: data.scrapedAt?.toDate?.().toISOString() ?? null,
+      fullPageAccessedAt: data.fullPageAccessedAt?.toDate?.().toISOString() ?? null,
       matchDetails: data.matchDetails
         ? {
             ...data.matchDetails,
@@ -67,6 +69,61 @@ export async function getRawJobsAction(filters?: JobFilters): Promise<RawJob[]> 
   return jobs.slice(0, 200)
 }
 
+export async function archiveRawJobAction(jobId: string): Promise<void> {
+  const userId = await requireUserId()
+
+  const jobRef = adminDb.doc(`users/${userId}/rawJobs/${jobId}`)
+  const jobSnap = await jobRef.get()
+
+  if (!jobSnap.exists) return
+
+  const data = jobSnap.data()!
+
+  await jobRef.update({ status: 'rejected' })
+
+  await adminDb.collection(`users/${userId}/blacklist`).add({
+    sourceUrl: data.sourceUrl ?? '',
+    company: data.company ?? '',
+    title: data.title ?? '',
+    addedAt: FieldValue.serverTimestamp(),
+    reason: 'manually_archived',
+  })
+}
+
+export async function approveRawJobAction(jobId: string): Promise<void> {
+  const userId = await requireUserId()
+
+  const syntheticMatchDetails = {
+    stackOverlap: 0,
+    seniorityScore: 0,
+    contractScore: 0,
+    modalityScore: 0,
+    salaryScore: 0,
+    semanticScore: 0,
+    positives: ['Manually approved by user'],
+    gaps: [],
+    cvAdaptations: [],
+    redFlags: [],
+    justification: 'Manually approved by user — no Claude analysis performed.',
+    manuallyApproved: true,
+    matchedAt: FieldValue.serverTimestamp(),
+  }
+
+  await adminDb.doc(`users/${userId}/rawJobs/${jobId}`).update({
+    status: 'matched',
+    matchScore: 70,
+    matchDetails: syntheticMatchDetails,
+  })
+
+  await adminDb.doc(`users/${userId}/applicationQueue/${jobId}`).set({
+    jobId,
+    priority: 70000,
+    matchScore: 70,
+    status: 'queued',
+    createdAt: FieldValue.serverTimestamp(),
+  })
+}
+
 export async function getRawJobAction(jobId: string): Promise<RawJob | null> {
   const userId = await requireUserId()
 
@@ -79,6 +136,7 @@ export async function getRawJobAction(jobId: string): Promise<RawJob | null> {
     ...data,
     id: doc.id,
     scrapedAt: data.scrapedAt?.toDate?.().toISOString() ?? null,
+    fullPageAccessedAt: data.fullPageAccessedAt?.toDate?.().toISOString() ?? null,
     matchDetails: data.matchDetails
       ? {
           ...data.matchDetails,

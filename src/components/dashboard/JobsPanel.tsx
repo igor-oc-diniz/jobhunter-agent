@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Search, Briefcase } from 'lucide-react'
 import { StatCard } from '@/components/design-system/molecules/StatCard'
 import { JobCard } from '@/components/design-system/molecules/JobCard'
 import { JobDrawer } from './JobDrawer'
+import { PendingReviewModal } from './PendingReviewModal'
 import type { RawJob } from '@/types'
 
 interface JobsPanelProps {
@@ -15,12 +17,15 @@ type StatusFilter = RawJob['status'] | 'all'
 type SortOption = 'recent' | 'score'
 
 export function JobsPanel({ jobs }: JobsPanelProps) {
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [platformFilter, setPlatformFilter] = useState('all')
   const [remoteOnly, setRemoteOnly] = useState(false)
   const [sort, setSort] = useState<SortOption>('recent')
   const [selectedJob, setSelectedJob] = useState<RawJob | null>(null)
+  const [pendingReviewOpen, setPendingReviewOpen] = useState(false)
+  const [reviewedJobIds, setReviewedJobIds] = useState<Set<string>>(new Set())
 
   const platforms = useMemo(() => {
     const set = new Set(jobs.map((j) => j.sourcePlatform))
@@ -53,12 +58,26 @@ export function JobsPanel({ jobs }: JobsPanelProps) {
     return result
   }, [jobs, statusFilter, platformFilter, remoteOnly, search, sort])
 
+  const pendingJobs = useMemo(
+    () => jobs.filter((j) => j.status === 'pending' && !reviewedJobIds.has(j.id)),
+    [jobs, reviewedJobIds]
+  )
+
   const counts = useMemo(() => ({
     total: jobs.length,
     matched: jobs.filter((j) => j.status === 'matched').length,
-    pending: jobs.filter((j) => j.status === 'pending').length,
+    pending: pendingJobs.length,
     rejected: jobs.filter((j) => j.status === 'rejected').length,
-  }), [jobs])
+  }), [jobs, pendingJobs])
+
+  function handleJobActioned(jobId: string) {
+    setReviewedJobIds((prev) => new Set(prev).add(jobId))
+  }
+
+  function handlePendingReviewOpenChange(open: boolean) {
+    setPendingReviewOpen(open)
+    if (!open) router.refresh()
+  }
 
   return (
     <>
@@ -74,6 +93,7 @@ export function JobsPanel({ jobs }: JobsPanelProps) {
           label="Pending Review"
           value={counts.pending}
           className="border-tertiary-fixed/20"
+          onClick={pendingJobs.length > 0 ? () => setPendingReviewOpen(true) : undefined}
         />
         <StatCard
           label="Rejected"
@@ -175,6 +195,14 @@ export function JobsPanel({ jobs }: JobsPanelProps) {
 
       {/* Side drawer */}
       <JobDrawer job={selectedJob} onClose={() => setSelectedJob(null)} />
+
+      {/* Pending review modal */}
+      <PendingReviewModal
+        jobs={pendingJobs}
+        open={pendingReviewOpen}
+        onOpenChange={handlePendingReviewOpenChange}
+        onJobActioned={handleJobActioned}
+      />
     </>
   )
 }
