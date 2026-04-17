@@ -9,6 +9,7 @@ interface StatCardProps {
   tooltip?: string
   trend?: { direction: TrendDirection; label: string }
   className?: string
+  onClick?: () => void
 }
 
 const trendConfig: Record<TrendDirection, { classes: string; icon: string }> = {
@@ -26,14 +27,19 @@ const trendConfig: Record<TrendDirection, { classes: string; icon: string }> = {
   },
 }
 
-export function StatCard({ label, value, tooltip, trend, className }: StatCardProps) {
+export function StatCard({ label, value, tooltip, trend, className, onClick }: StatCardProps) {
   const trend_cfg = trend ? trendConfig[trend.direction] : null
   const [showTooltip, setShowTooltip] = useState(false)
 
   return (
     <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter') onClick() } : undefined}
       className={cn(
         'bg-surface-container-low p-6 rounded-[1.5rem] border border-outline-variant/10 relative',
+        onClick && 'cursor-pointer hover:border-outline-variant/30 hover:bg-surface-container transition-colors',
         className
       )}
     >

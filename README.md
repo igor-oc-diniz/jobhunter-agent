@@ -26,7 +26,9 @@ Autonomous job application agent: scrapes jobs → semantic matching → persona
 
 ## Supported platforms
 
-Remotive, Indeed (BR / CA / AU), WeWorkRemotely, Himalayas, Wellfound, RemoteOK, Arbeitnow
+Greenhouse, Lever, Remotive, WeWorkRemotely, Himalayas, RemoteOK, Arbeitnow, Wellfound, Gupy, Indeed (BR / CA / AU)
+
+Enabled platforms are configured per-user in Firestore (`agentConfig.enabledPlatforms`) via the **Edit Profile → Agent Config** step. No redeploy needed.
 
 ## Running locally
 

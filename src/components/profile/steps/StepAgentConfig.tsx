@@ -15,7 +15,20 @@ import {
 } from '@/components/ui/select'
 import type { AgentConfig } from '@/types'
 
-const PLATFORMS = ['linkedin', 'gupy', 'indeed', 'infojobs', 'catho']
+const PLATFORMS: { id: string; label: string }[] = [
+  { id: 'greenhouse', label: 'Greenhouse' },
+  { id: 'lever', label: 'Lever' },
+  { id: 'remotive', label: 'Remotive' },
+  { id: 'weworkremotely', label: 'We Work Remotely' },
+  { id: 'himalayas', label: 'Himalayas' },
+  { id: 'remoteok', label: 'RemoteOK' },
+  { id: 'arbeitnow', label: 'Arbeitnow' },
+  { id: 'wellfound', label: 'Wellfound' },
+  { id: 'gupy', label: 'Gupy' },
+  { id: 'indeed-br', label: 'Indeed BR' },
+  { id: 'indeed-ca', label: 'Indeed CA' },
+  { id: 'indeed-au', label: 'Indeed AU' },
+]
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 interface Props {
@@ -29,7 +42,7 @@ const defaults: AgentConfigFormValues = {
   mode: 'semi-automatic',
   minScore: 70,
   maxApplicationsPerDay: 10,
-  enabledPlatforms: ['gupy', 'indeed'],
+  enabledPlatforms: ['greenhouse', 'lever', 'remotive', 'weworkremotely', 'himalayas', 'remoteok', 'arbeitnow', 'wellfound'],
   searchKeywords: [],
   excludeKeywords: [],
   scheduleHours: [9, 15],
@@ -104,16 +117,16 @@ export function StepAgentConfig({ defaultValues, onBack, onFinish, saving }: Pro
         <div className="flex flex-wrap gap-2">
           {PLATFORMS.map((p) => (
             <button
-              key={p}
+              key={p.id}
               type="button"
-              onClick={() => togglePlatform(p)}
+              onClick={() => togglePlatform(p.id)}
               className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                enabledPlatforms.includes(p)
+                enabledPlatforms.includes(p.id)
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-background border-border text-muted-foreground'
               }`}
             >
-              {p}
+              {p.label}
             </button>
           ))}
         </div>

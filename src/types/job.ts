@@ -15,6 +15,10 @@ export interface RawJob {
   location: string
   isRemote: boolean
   description: string
+  /** Indicates whether the description came from the full job page or just the listing snippet */
+  descriptionSource: 'full_page' | 'snippet'
+  /** True when no description could be extracted at all */
+  descriptionMissing?: boolean
   descriptionSections?: DescriptionSections
   requirements?: string
   salaryMin?: number
@@ -27,6 +31,13 @@ export interface RawJob {
   sourceUrl: string
   sourcePlatform: string
   scrapedAt: Timestamp
+  /** Timestamp of when the individual job page was accessed (Phase 2) */
+  fullPageAccessedAt?: Timestamp
+
+  /** Whether this listing passed the local pre-filter (Phase 1) */
+  preFilterPassed: boolean
+  /** Reason for pre-filter rejection, when applicable */
+  preFilterReason?: string
 
   status: 'pending' | 'matched' | 'rejected' | 'applied' | 'error'
   matchScore?: number
@@ -49,6 +60,7 @@ export interface MatchDetails {
 
   justification: string
   matchedAt: Timestamp
+  manuallyApproved?: boolean
 }
 
 export interface BlacklistEntry {
@@ -56,5 +68,5 @@ export interface BlacklistEntry {
   company: string
   title: string
   addedAt: Timestamp
-  reason: 'applied' | 'user_rejected' | 'score_too_low' | 'error' | 'red_flag'
+  reason: 'applied' | 'user_rejected' | 'score_too_low' | 'error' | 'red_flag' | 'manually_archived' | 'pre_filter'
 }

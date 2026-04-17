@@ -47,16 +47,13 @@ function buildMatchingPrompt(job: RawJob, profile: UserProfile): string {
 - Desired role: ${profile.objective.desiredRole}
 - Seniority: ${profile.objective.seniority}
 - Main stack: ${profile.skills.technical.map((s) => `${s.name} (${s.level})`).join(', ')}
-- Contract type: ${profile.objective.contractType}
 - Modality: ${profile.objective.modality}
-- Salary expectation: R$ ${profile.objective.salaryMin}–${profile.objective.salaryMax}
 - Summary: ${profile.objective.professionalSummary}
 
 ## JOB
 - Title: ${job.title}
 - Company: ${job.company}
 - Location: ${job.location} ${job.isRemote ? '(Remote)' : ''}
-- Contract: ${job.contractType ?? 'not specified'}
 - Salary: ${job.salaryMin ? `R$ ${job.salaryMin}–${job.salaryMax}` : 'not specified'}
 - Description: ${job.description.substring(0, 3000)}
 
@@ -67,7 +64,8 @@ function buildMatchingPrompt(job: RawJob, profile: UserProfile): string {
   * 60–79: moderate fit, candidate could do the job with some ramp-up
   * 80–100: strong fit, role and stack align closely
 - Be strict: a DevOps job for a frontend developer should score < 30, even if they share some tools.
-- recommended: true ONLY if semanticScore >= 65 AND seniorityMatch == "match" AND no critical redFlags.
+- seniorityMatch rules: use "match" when the candidate's experience is within ±2 years of what the job requires. Use "over" only if the gap is more than 2 years above, "under" only if more than 2 years below. When in doubt, default to "match".
+- recommended: true ONLY if semanticScore >= 65 AND seniorityMatch != "under" AND no critical redFlags.
 
 ## DESCRIPTION PARSING
 Also extract from the job description:
@@ -114,16 +112,10 @@ export function calculateScoreBreakdown(job: RawJob, profile: UserProfile, claud
       ? (jobStack.filter((t) => userStack.includes(t)).length / jobStack.length) * 100
       : 50
 
-  const seniorityMap: Record<string, number> = { under: 40, match: 100, over: 60 }
+  const seniorityMap: Record<string, number> = { under: 40, match: 100, over: 85 }
   const seniorityScore = seniorityMap[claude.seniorityMatch]
 
-  const contractScore =
-    !job.contractType ||
-    job.contractType === 'unknown' ||
-    profile.objective.contractType === 'both' ||
-    job.contractType === profile.objective.contractType
-      ? 100
-      : 0
+  const contractScore = 100 // contract type (CLT/PJ) is not a filter criterion
 
   const modalityScore =
     (job.isRemote && ['remote', 'any'].includes(profile.objective.modality)) ||
@@ -161,10 +153,6 @@ function preFilter(job: RawJob, profile: UserProfile): { pass: boolean; reason?:
   if (excludeKeywords.some((kw) => job.techStack.map((t) => t.toLowerCase()).includes(kw))) {
     return { pass: false, reason: `tech stack matches exclude keyword` }
   }
-  if (job.salaryMax && profile.objective.salaryMin && job.salaryMax < profile.objective.salaryMin) {
-    return { pass: false, reason: `salary too low (max ${job.salaryMax} < min ${profile.objective.salaryMin})` }
-  }
-
   // Title relevance: extract words from desired role and check at least one appears in job title
   const desiredWords = profile.objective.desiredRole
     .toLowerCase()
@@ -200,7 +188,7 @@ export async function matchJob(
   profile: UserProfile,
   userId: string,
   log?: LogFn
-): Promise<number> {
+): Promise<{ score: number; status: 'matched' | 'rejected' | 'prefiltered' }> {
   const filter = preFilter(job, profile)
   if (!filter.pass) {
     logger.info('prefilter_rejected', { userId, jobId: job.id, title: job.title, reason: filter.reason })
@@ -211,7 +199,7 @@ export async function matchJob(
       'matchDetails.justification': `Pre-filter: ${filter.reason}`,
     })
     await addToBlacklist(userId, job, 'score_too_low')
-    return 0
+    return { score: 0, status: 'prefiltered' }
   }
   logger.info('prefilter_passed', { userId, jobId: job.id, title: job.title, company: job.company })
   log?.('info', 'prefilter_passed', `  ✓ passou pré-filtro → enviando para Claude`)
@@ -268,7 +256,7 @@ export async function matchJob(
 
   const descriptionSections: DescriptionSections = claude.descriptionSections
 
-  if (score >= threshold && claude.recommended && claude.redFlags.length === 0) {
+  if (score >= threshold && claude.recommended) {
     await adminDb.doc(`users/${userId}/rawJobs/${job.id}`).update({
       status: 'matched',
       matchScore: score,
@@ -287,10 +275,9 @@ export async function matchJob(
 
     logger.info('job_matched', { userId, jobId: job.id, score })
     log?.('info', 'job_matched', `  ✅ APROVADA score=${score} — ${claude.justification}`)
+    return { score, status: 'matched' }
   } else {
-    const reason = claude.redFlags.length > 0
-      ? `red flags: [${claude.redFlags.join('; ')}]`
-      : `score ${score} < threshold ${threshold}${!claude.recommended ? ' + not recommended' : ''}`
+    const reason = `score ${score} < threshold ${threshold}${!claude.recommended ? ' + not recommended' : ''}`
     await adminDb.doc(`users/${userId}/rawJobs/${job.id}`).update({
       status: 'rejected',
       matchScore: score,
@@ -300,9 +287,8 @@ export async function matchJob(
     await addToBlacklist(userId, job, 'score_too_low')
     logger.info('job_rejected', { userId, jobId: job.id, score, reason })
     log?.('info', 'job_rejected', `  ✗ rejeitada score=${score} — ${reason}`)
+    return { score, status: 'rejected' }
   }
-
-  return score
 }
 
 async function addToBlacklist(userId: string, job: RawJob, reason: string) {
@@ -354,10 +340,10 @@ export async function runMatching(userId: string, profile: UserProfile, addEntry
     const job = doc.data() as RawJob
     log('info', 'matching_job', `[${i + 1}/${snap.size}] ${job.title} @ ${job.company} (${job.sourcePlatform})`)
     try {
-      const score = await matchJob(job, profile, userId, log)
-      if (score === 0) {
+      const result = await matchJob(job, profile, userId, log)
+      if (result.status === 'prefiltered') {
         prefiltered++
-      } else if (score >= profile.agentConfig.minScore) {
+      } else if (result.status === 'matched') {
         matched++
       } else {
         rejected++

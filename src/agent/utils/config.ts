@@ -14,16 +14,6 @@ export const AgentConfigSchema = z.object({
   runOnStartup: z.boolean().default(false),
 
   // Scrapers
-  scraperPlatforms: z.array(z.string()).default([
-    'greenhouse',
-    'lever',
-    'remotive',
-    'weworkremotely',
-    'himalayas',
-    'remoteok',
-    'arbeitnow',
-    'wellfound',
-  ]),
   maxJobsPerRun: z.number().int().positive().default(50),
   scraperTimeout: z.number().int().positive().default(60000),
   userAgent: z.string().optional(),
@@ -47,7 +37,6 @@ export function loadConfig(): AgentConfig {
     timezone: process.env.TZ,
     runOnStartup: process.env.RUN_ON_STARTUP === 'true',
     
-    scraperPlatforms: process.env.SCRAPER_PLATFORMS?.split(',').map(p => p.trim()).filter(Boolean),
     maxJobsPerRun: process.env.MAX_JOBS_PER_RUN ? parseInt(process.env.MAX_JOBS_PER_RUN, 10) : undefined,
     scraperTimeout: process.env.SCRAPER_TIMEOUT ? parseInt(process.env.SCRAPER_TIMEOUT, 10) : undefined,
     userAgent: process.env.SCRAPER_USER_AGENT,

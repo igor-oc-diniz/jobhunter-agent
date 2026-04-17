@@ -19,10 +19,26 @@ export abstract class BaseScraper {
   }
 
   /**
-   * Abstract method to be implemented by each platform scraper
-   * Should return array of raw job data scraped from the platform
+   * Abstract method to be implemented by each platform scraper.
+   * Should return array of raw job data scraped from the platform (Phase 1).
+   * For API-based scrapers the description here may already be complete.
    */
   abstract scrape(): Promise<RawJobInput[]>
+
+  /**
+   * Phase 2: fetch the full job description from the individual job page.
+   *
+   * Override this in scrapers that return only a snippet in Phase 1 (e.g. Indeed).
+   * The default implementation returns null, which signals the pipeline to use
+   * the description already present in the RawJobInput as-is.
+   *
+   * @param url - canonical URL of the job posting
+   * @returns full description HTML/text, or null to fall back to snippet
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async scrapeJobDetail(_url: string): Promise<string | null> {
+    return null
+  }
 
   /**
    * Normalize raw job input and generate hash for deduplication
