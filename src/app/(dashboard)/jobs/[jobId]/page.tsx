@@ -10,10 +10,12 @@ import {
   Send,
 } from "lucide-react";
 import { getRawJobAction } from "@/app/actions/jobs";
+import { requireUserId } from "@/lib/auth/server";
 import { ScoreBadge } from "@/components/design-system/atoms/ScoreBadge";
 import { RawJobStatusBadge } from "@/components/design-system/atoms/RawJobStatusBadge";
 import { Chip } from "@/components/design-system/atoms/Chip";
 import { FormAssistant } from "@/components/dashboard/FormAssistant";
+import { GenerateCVButton } from "@/components/dashboard/GenerateCVButton";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -22,6 +24,7 @@ interface Props {
 
 export default async function JobDetailPage({ params }: Props) {
   const { jobId } = await params;
+  const userId = await requireUserId();
   const job = await getRawJobAction(jobId);
 
   if (!job) notFound();
@@ -177,113 +180,99 @@ export default async function JobDetailPage({ params }: Props) {
             </span>
           </a>
 
-          <button className="bg-surface-container-high hover:bg-surface-container-highest transition-all py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 border border-outline-variant/10 hover:scale-[1.01] active:scale-95">
-            <FileText className="w-4 h-4 text-primary-container" />
-            <span className="text-xs font-headline font-bold text-primary uppercase tracking-widest">
-              Generate Custom CV
-            </span>
-          </button>
+          <GenerateCVButton userId={userId} jobId={jobId} />
 
           <button className="bg-surface-container-high hover:bg-surface-container-highest transition-all py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 border border-outline-variant/10 hover:scale-[1.01] active:scale-95">
-            <FileText className="w-4 h-4 text-secondary-container" />
+            <Brain className="w-4 h-4 text-primary-container" />
             <span className="text-xs font-headline font-bold text-primary uppercase tracking-widest">
               Generate Cover Letter
             </span>
           </button>
         </div>
 
-        {/* Mission Intelligence — job description collapsible */}
-        <section className="bg-surface-container-low/60 backdrop-blur-[20px] rounded-2xl border border-outline-variant/10 overflow-hidden">
-          <details className="group" open>
-            <summary className="flex items-center justify-between p-6 cursor-pointer list-none hover:bg-white/5 transition-colors select-none">
-              <h2 className="text-xl font-headline font-bold text-primary flex items-center gap-3">
-                <Brain className="w-5 h-5 text-primary-container" />
-                Job Description
-              </h2>
-              <svg
-                className="w-5 h-5 text-on-surface-variant transition-transform group-open:rotate-180"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </summary>
+        {/* Match analysis */}
+        {details?.justification && (
+          <section className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/5">
+            <h3 className="text-sm font-headline font-bold text-primary uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Brain className="w-4 h-4 text-primary-container" />
+              AI Match Analysis
+            </h3>
+            <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
+              {details.justification}
+            </p>
+          </section>
+        )}
 
-            <div className="px-8 pb-8 pt-2 border-t border-outline-variant/10">
-              {descLines.length > 0 ? (
-                <div className="grid grid-cols-2 gap-12">
-                  <div className="space-y-4">
-                    <h3 className="text-primary font-bold uppercase tracking-widest text-[10px] opacity-60">
-                      Activities
-                    </h3>
-                    <ul className="space-y-2 text-sm text-on-surface-variant font-medium">
-                      {leftLines.map((line, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="w-1.5 h-1.5 bg-primary-container rounded-full mt-1.5 shrink-0" />
-                          {line}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="space-y-4">
-                    <h3 className="text-primary font-bold uppercase tracking-widest text-[10px] opacity-60">
-                      {reqLines.length > 0 ? "Protocols" : "Continued"}
-                    </h3>
-                    <ul className="space-y-2 text-sm text-on-surface-variant font-medium">
-                      {(reqLines.length > 0 ? reqLines : rightLines).map(
-                        (line, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="w-1.5 h-1.5 bg-secondary-container rounded-full mt-1.5 shrink-0" />
-                            {line}
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-on-surface-variant text-sm">
-                  No description available.
-                </p>
-              )}
-
-              {/* Tech stack */}
-              {job.techStack?.length > 0 && (
-                <div className="mt-8 pt-6 border-t border-outline-variant/10">
-                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-4">
-                    Tech Stack
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {job.techStack.map((tech) => (
-                      <Chip key={tech} label={tech} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* AI justification */}
-              {details?.justification && (
-                <div className="mt-6 p-4 bg-primary-container/5 rounded-xl border border-primary-container/10">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary-container mb-2">
-                    Agent Justification
-                  </p>
-                  <p className="text-sm text-on-surface-variant italic leading-relaxed">
-                    &ldquo;{details.justification}&rdquo;
-                  </p>
-                </div>
-              )}
+        {/* Description */}
+        {descLines.length > 0 && (
+          <section className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/5">
+            <h3 className="text-sm font-headline font-bold text-primary uppercase tracking-widest mb-4">
+              Description
+            </h3>
+            <div className="grid md:grid-cols-2 gap-x-6 gap-y-3 text-sm text-on-surface-variant leading-relaxed">
+              <div className="space-y-3">
+                {leftLines.map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              </div>
+              <div className="space-y-3">
+                {rightLines.map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              </div>
             </div>
-          </details>
-        </section>
+          </section>
+        )}
 
-        {/* Form Assistant */}
+        {/* Requirements */}
+        {reqLines.length > 0 && (
+          <section className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/5">
+            <h3 className="text-sm font-headline font-bold text-primary uppercase tracking-widest mb-4">
+              Requirements
+            </h3>
+            <ul className="space-y-2 text-sm text-on-surface-variant leading-relaxed">
+              {reqLines.map((line, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="text-primary-container mt-1 shrink-0">•</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* Tech stack */}
+        {job.techStack && job.techStack.length > 0 && (
+          <section className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/5">
+            <h3 className="text-sm font-headline font-bold text-primary uppercase tracking-widest mb-4">
+              Tech Stack
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {job.techStack.map((tech) => (
+                <Chip key={tech} label={tech} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Form assistant */}
         <FormAssistant />
+
+        {/* Footer metadata */}
+        <section className="bg-surface-container-low/40 rounded-2xl p-6 border border-outline-variant/5 text-xs text-on-surface-variant space-y-1 font-mono">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-outline uppercase tracking-widest">Scraped:</span>
+            <span>
+              {job.scrapedAt
+                ? new Date(job.scrapedAt as unknown as string).toLocaleString()
+                : "N/A"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-outline uppercase tracking-widest">Job ID:</span>
+            <span className="break-all">{job.id}</span>
+          </div>
+        </section>
       </div>
     </div>
   );
