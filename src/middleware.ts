@@ -10,7 +10,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
   if (session && isAuthPage) {
-    return NextResponse.redirect(new URL('/applications', request.url))
+    return NextResponse.redirect(new URL('/jobs', request.url))
   }
 
   return NextResponse.next()

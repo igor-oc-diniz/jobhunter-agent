@@ -16,7 +16,18 @@ export interface JobFilters {
 export async function getRawJobsAction(filters?: JobFilters): Promise<RawJob[]> {
   const userId = await requireUserId()
 
-  const snap = await adminDb.collection(`users/${userId}/rawJobs`).get()
+  let snap: FirebaseFirestore.QuerySnapshot
+  try {
+    snap = await adminDb
+      .collection(`users/${userId}/rawJobs`)
+      .orderBy('scrapedAt', 'desc')
+      .limit(100)
+      .get()
+  } catch (err: unknown) {
+    const code = (err as { code?: number }).code
+    if (code === 8) return []
+    throw err
+  }
 
   let jobs = snap.docs.map((d) => {
     const data = d.data()
@@ -66,7 +77,7 @@ export async function getRawJobsAction(filters?: JobFilters): Promise<RawJob[]> 
     })
   }
 
-  return jobs.slice(0, 200)
+  return jobs
 }
 
 export async function archiveRawJobAction(jobId: string): Promise<void> {
