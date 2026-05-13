@@ -17,8 +17,7 @@ export async function requireUserId(): Promise<string> {
     const decoded = await adminAuth.verifyIdToken(session)
     return decoded.uid
   } catch {
-    // Clear the invalid/expired cookie so the middleware doesn't loop
-    cookieStore.delete('session')
-    redirect('/login')
+    // Token expired or invalid — clear the cookie via Route Handler to avoid redirect loop
+    redirect('/api/auth/clear')
   }
 }

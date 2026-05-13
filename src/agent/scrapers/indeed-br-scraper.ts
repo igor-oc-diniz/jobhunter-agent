@@ -1,21 +1,13 @@
 import { chromium } from 'playwright-extra'
 import StealthPlugin from 'puppeteer-extra-plugin-stealth'
 import { BaseScraper } from './base-scraper'
+import { extractTechStack } from '../utils/tech-extractor'
 import type { RawJobInput } from '@/types/scraper'
 
 chromium.use(StealthPlugin())
 
-const SKILL_PATTERNS = [
-  'javascript', 'typescript', 'python', 'java', 'c#', 'php', 'ruby', 'go', 'rust', 'kotlin', 'swift',
-  'react', 'angular', 'vue', 'next.js', 'node.js', 'express', 'nestjs', 'fastapi', 'django', 'spring',
-  'sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch',
-  'docker', 'kubernetes', 'aws', 'azure', 'gcp', 'terraform',
-  'git', 'ci/cd', 'graphql', 'rest', 'microservices',
-]
-
 function extractSkills(text: string): string[] {
-  const lower = text.toLowerCase()
-  return SKILL_PATTERNS.filter((s) => lower.includes(s))
+  return extractTechStack(text).map((s) => s.toLowerCase())
 }
 
 interface IndeedJobCard {
@@ -137,5 +129,42 @@ export class IndeedBRScraper extends BaseScraper {
 
     this.logger.info('indeed_scrape_complete', { total: jobs.length })
     return jobs.slice(0, this.config.maxJobsPerRun)
+  }
+
+  /**
+   * Phase 2: fetch the full job description from the individual Indeed BR job page.
+   * Returns the inner HTML of #jobDescriptionText, or null on failure.
+   */
+  override async scrapeJobDetail(url: string): Promise<string | null> {
+    const browser = await chromium.launch({ headless: true })
+    try {
+      const context = await browser.newContext({
+        locale: 'pt-BR',
+        timezoneId: 'America/Sao_Paulo',
+        viewport: { width: 1280, height: 800 },
+        userAgent:
+          this.config.userAgent ??
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      })
+
+      const page = await context.newPage()
+      await page.route('**/*.{png,jpg,jpeg,gif,webp,woff,woff2,ttf}', (route) => route.abort())
+
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.config.timeout ?? 30000 })
+      await page.waitForTimeout(2000 + Math.random() * 2000)
+
+      const description = await page.$eval(
+        '#jobDescriptionText',
+        (el) => el.innerHTML
+      ).catch(() => null)
+
+      await context.close()
+      return description
+    } catch (err) {
+      this.logger.warn('indeed_br_detail_failed', { url, error: String(err) })
+      return null
+    } finally {
+      await browser.close()
+    }
   }
 }

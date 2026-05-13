@@ -63,14 +63,21 @@ export async function triggerAgentRunAction(): Promise<{ ok: boolean; error?: st
     return { ok: false, error: 'AGENT_URL not configured' }
   }
 
-  const res = await fetch(`${agentUrl}/run`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(process.env.AGENT_SECRET ? { 'x-agent-secret': process.env.AGENT_SECRET } : {}),
-    },
-    body: JSON.stringify({ userId }),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${agentUrl}/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.AGENT_SECRET ? { 'x-agent-secret': process.env.AGENT_SECRET } : {}),
+      },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(60_000), // 60s — allows for Fly cold start
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: `Could not reach agent at ${agentUrl}: ${message}` }
+  }
 
   if (!res.ok) {
     const text = await res.text()

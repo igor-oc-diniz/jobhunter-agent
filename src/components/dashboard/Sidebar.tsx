@@ -2,12 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Kanban, BarChart2, User, Bot, Settings } from 'lucide-react'
+import { User, Bot, Settings, Briefcase } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navigation = [
-  { name: 'Applications', href: '/applications', icon: Kanban },
-  { name: 'Analytics', href: '/analytics', icon: BarChart2 },
+  { name: 'Jobs Found', href: '/jobs', icon: Briefcase },
   { name: 'Profile', href: '/profile/edit', icon: User },
   { name: 'Agent', href: '/agent', icon: Bot },
   { name: 'Settings', href: '/settings', icon: Settings },

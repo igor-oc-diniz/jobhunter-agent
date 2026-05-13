@@ -36,7 +36,7 @@ function FinalizeContent() {
           body: JSON.stringify({ token: idToken }),
         })
 
-        router.push('/applications')
+        router.push('/jobs')
       } catch (err) {
         console.error('Finalize error:', err)
         router.push('/login?error=auth_failed')
