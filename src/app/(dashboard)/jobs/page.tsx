@@ -11,7 +11,7 @@ export default async function JobsPage() {
           Jobs Found
         </h1>
         <p className="text-on-surface-variant text-sm mt-2">
-          {jobs.length} vagas coletadas pelos scrapers
+          {jobs.length === 100 ? 'Últimas 100 vagas coletadas' : `${jobs.length} vagas coletadas pelos scrapers`}
         </p>
       </div>
 

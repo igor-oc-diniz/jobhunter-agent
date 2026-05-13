@@ -9,11 +9,10 @@ import { StepObjective } from './steps/StepObjective'
 import { StepExperiences } from './steps/StepExperiences'
 import { StepEducation } from './steps/StepEducation'
 import { StepSkills } from './steps/StepSkills'
-import { StepAgentConfig } from './steps/StepAgentConfig'
 import { saveProfileAction } from '@/app/actions/profile'
 import type { UserProfile } from '@/types'
 
-const STEPS = ['Personal Info', 'Objective', 'Experience', 'Education', 'Skills', 'Agent Config']
+const STEPS = ['Personal Info', 'Objective', 'Experience', 'Education', 'Skills']
 
 type PartialProfile = Partial<Omit<UserProfile, 'userId' | 'createdAt' | 'updatedAt'>>
 
@@ -30,7 +29,6 @@ export function ProfileForm({ initialData = {}, title, subtitle, showImportStep 
   const [importing, setImporting] = useState(showImportStep)
   const [step, setStep] = useState(0)
   const [data, setData] = useState<PartialProfile>(initialData)
-  const [saving, setSaving] = useState(false)
   // Incremented after import to force remount of step components so
   // React Hook Form picks up the new defaultValues
   const [importVersion, setImportVersion] = useState(0)
@@ -42,14 +40,11 @@ export function ProfileForm({ initialData = {}, title, subtitle, showImportStep 
 
   async function finish(stepData: Partial<PartialProfile>) {
     const final = { ...data, ...stepData } as Omit<UserProfile, 'userId' | 'createdAt' | 'updatedAt'>
-    setSaving(true)
     try {
       await saveProfileAction(final)
-      router.push('/applications')
+      router.push('/jobs')
     } catch (err) {
       console.error('[ProfileForm] save failed:', err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -97,14 +92,7 @@ export function ProfileForm({ initialData = {}, title, subtitle, showImportStep 
       key={`skills-${importVersion}`}
       defaultValues={data.skills}
       onBack={() => setStep(3)}
-      onNext={(v) => advance({ skills: v })}
-    />,
-    <StepAgentConfig
-      key={`agentConfig-${importVersion}`}
-      defaultValues={data.agentConfig}
-      onBack={() => setStep(4)}
-      onFinish={(v) => finish({ agentConfig: v })}
-      saving={saving}
+      onNext={(v) => finish({ skills: v })}
     />,
   ]
 

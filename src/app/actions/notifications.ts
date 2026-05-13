@@ -41,7 +41,13 @@ export async function getNotificationsAction(onlyUnread = true): Promise<Seriali
     query = query.orderBy('createdAt', 'desc')
   }
 
-  const snap = await query.get()
+  let snap: FirebaseFirestore.QuerySnapshot
+  try {
+    snap = await query.get()
+  } catch (err: unknown) {
+    if ((err as { code?: number }).code === 8) return []
+    throw err
+  }
   return snap.docs
     .map((d) => {
       const raw = d.data()
